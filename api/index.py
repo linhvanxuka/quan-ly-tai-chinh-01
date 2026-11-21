@@ -494,6 +494,7 @@ def handle_parse_bank():
                 continue
             raw_rows.append((date_str, desc_str, amt))
 
+    matched_existing_indices = set()
     for date_str, desc_str, amt in raw_rows:
         if amt >= 10000:
             amt_k = int(amt / 1000)
@@ -505,8 +506,38 @@ def handle_parse_bank():
             
         cat, owner = auto_categorize(desc_str)
         
-        # Kiểm tra trùng lặp với dữ liệu đã lưu
-        is_dup = check_is_duplicate(date_str, amt_k, desc_str, existing_expenses)
+        # Kiểm tra trùng lặp thông minh với Google Sheet (ưu tiên bảo lưu 100% bản anh đã sửa)
+        is_dup = False
+        norm_desc = re.sub(r'[^a-zA-Z0-9]', '', desc_str.lower())
+        
+        # Bước 1: Khớp số tiền + ngày + nội dung tương đồng
+        for idx, ex in enumerate(existing_expenses):
+            if idx in matched_existing_indices:
+                continue
+            try:
+                ex_amt = int(float(ex.get("amount", 0)))
+            except:
+                ex_amt = 0
+            if ex_amt == amt_k and str(ex.get("date", "")).strip() == date_str:
+                ex_desc = re.sub(r'[^a-zA-Z0-9]', '', str(ex.get("desc", "")).lower())
+                if (norm_desc and ex_desc and (norm_desc in ex_desc or ex_desc in norm_desc)) or (norm_desc[:10] == ex_desc[:10] if len(norm_desc)>=10 else False):
+                    matched_existing_indices.add(idx)
+                    is_dup = True
+                    break
+                    
+        # Bước 2: Khớp số tiền + ngày (kể cả khi anh đã sửa lại toàn bộ tên nội dung trên Sheet)
+        if not is_dup:
+            for idx, ex in enumerate(existing_expenses):
+                if idx in matched_existing_indices:
+                    continue
+                try:
+                    ex_amt = int(float(ex.get("amount", 0)))
+                except:
+                    ex_amt = 0
+                if ex_amt == amt_k and str(ex.get("date", "")).strip() == date_str:
+                    matched_existing_indices.add(idx)
+                    is_dup = True
+                    break
         
         if is_dup:
             parsed_items.append({
