@@ -17,7 +17,12 @@ app = Flask(__name__, template_folder=template_dir)
 
 SPREADSHEET_ID = os.environ.get("SPREADSHEET_ID", "1OdHwBFJ5L5JO5_Q_pk-_F_acBHUbpMsdG0fd7pyb_HA")
 ACTUAL_SHEET = "Chi Tiêu Thực Tế"
-GSHEETS_URL = os.environ.get("GSHEETS_URL", "https://script.google.com/macros/s/AKfycbxiHxuHuNJr32aqUPeL2TKE5VWAFtVyQSRD7fxMOfyiqsW3JxidImsGzE2KV4XeD9AH/exec")
+DEFAULT_GSHEETS_URL = "https://script.google.com/macros/s/AKfycbxQbmWKoui8wSXBtHQkJrC4tdEm54geUDQ8FvvXysdX9zMTWN-REFWkLLQ6r-5GN8aTEg/exec"
+_env_url = os.environ.get("GSHEETS_URL", "")
+if not _env_url or "AKfycbxqg9NL" in _env_url or "AKfycbxiHxuH" in _env_url:
+    GSHEETS_URL = DEFAULT_GSHEETS_URL
+else:
+    GSHEETS_URL = _env_url
 
 FALLBACK_EXPENSES = []
 
@@ -207,39 +212,34 @@ def append_to_sheet(rows):
         import json as _json
         payload_str = _json.dumps({"rows": rows})
         
-        # Phương án 1: POST JSON thông thường (không follow redirect để tránh mất body)
+        # Phương án 1: POST JSON trực tiếp (Google Apps Script)
         try:
-            r = requests.post(url_to_use, json={"rows": rows}, timeout=15, allow_redirects=False)
+            r = requests.post(url_to_use, json={"rows": rows}, timeout=20, allow_redirects=True)
             if r.status_code == 200:
-                is_html = "text/html" in r.headers.get("Content-Type", "").lower() or "<!doctype" in r.text.lower()
-                if not is_html:
-                    return True, "Thành công"
-            # Nếu bị redirect (302/303) → Google Apps Script đã nhận POST trước redirect
-            # Thử xem body trước redirect có kết quả không
-            if r.status_code in [301, 302, 303, 307, 308]:
-                # POST đã được tiếp nhận bởi Apps Script trước khi redirect
-                # Google Apps Script 302 sau doPost = thành công
-                # Kiểm tra bằng cách GET danh sách (không cần thiết, cứ coi là OK)
-                pass
+                try:
+                    res_json = r.json()
+                    if res_json.get("success"):
+                        return True, "Thành công"
+                except Exception:
+                    if not ("text/html" in r.headers.get("Content-Type", "").lower() or "<!doctype" in r.text.lower()):
+                        return True, "Thành công"
         except Exception:
             pass
         
-        # Phương án 2: GET với payload trong query string (bypass redirect issue)
+        # Phương án 2: GET với payload qua query param (fallback)
         try:
             import urllib.parse as _up
             get_url = url_to_use + "?action=append&payload=" + _up.quote(payload_str)
             r2 = requests.get(get_url, timeout=20, allow_redirects=True)
-            is_html2 = "text/html" in r2.headers.get("Content-Type", "").lower() or "<!doctype" in r2.text.lower()
-            if r2.status_code == 200 and not is_html2:
+            if r2.status_code == 200:
                 try:
-                    result = r2.json()
-                    if result.get("success"):
+                    res_json2 = r2.json()
+                    if res_json2.get("success"):
                         return True, "Thành công"
-                    else:
-                        return False, f"Apps Script lỗi: {result.get('error', 'unknown')}"
                 except Exception:
-                    pass
-            return False, f"Google Apps Script trả về lỗi (HTTP {r2.status_code}). Vui lòng kiểm tra cài đặt quyền truy cập 'Bất kỳ ai' trong Apps Script."
+                    if not ("text/html" in r2.headers.get("Content-Type", "").lower() or "<!doctype" in r2.text.lower()):
+                        return True, "Thành công"
+            return False, f"Google Apps Script trả về HTTP {r2.status_code}. Vui lòng kiểm tra quyền truy cập Anyone."
         except Exception as e:
             return False, f"Lỗi kết nối tới Google Apps Script: {str(e)}"
             
