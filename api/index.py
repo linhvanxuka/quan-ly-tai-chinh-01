@@ -459,7 +459,31 @@ def handle_save_batch():
 @app.route("/", defaults={"path": ""}, methods=["GET", "POST"])
 @app.route("/<path:path>", methods=["GET", "POST"])
 def catch_all(path):
-    p = path.strip("/").lower()
+    endpoint = request.args.get("endpoint", "").strip("/").lower()
+    p = (request.headers.get("x-matched-path") or 
+         request.headers.get("x-vercel-matched-path") or 
+         request.headers.get("x-forwarded-uri") or 
+         request.path or path or "").split("?")[0].strip("/").lower()
+    
+    is_summary = (endpoint == "summary" or p in ["api/summary", "summary"] or p.endswith("/summary"))
+    is_add_manual = (endpoint == "add-manual" or p in ["api/add-manual", "add-manual"] or p.endswith("/add-manual"))
+    is_suggest = (endpoint == "suggest-category" or p in ["api/suggest-category", "suggest-category"] or p.endswith("/suggest-category"))
+    is_parse = (endpoint == "parse-bank" or p in ["api/parse-bank", "parse-bank"] or p.endswith("/parse-bank"))
+    is_save = (endpoint == "save-batch" or p in ["api/save-batch", "save-batch"] or p.endswith("/save-batch"))
+
+    if request.method == "POST":
+        if is_add_manual:
+            return handle_add_manual()
+        elif is_suggest:
+            return handle_suggest_category()
+        elif is_parse:
+            return handle_parse_bank()
+        elif is_save:
+            return handle_save_batch()
+
+    if request.method == "GET":
+        if is_summary:
+            return get_summary_data()
     
     if request.method == "POST":
         if p in ["api/add-manual", "add-manual"]:
