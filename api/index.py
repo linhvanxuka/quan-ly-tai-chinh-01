@@ -69,6 +69,233 @@ def strip_accents(s):
     s = unicodedata.normalize('NFD', str(s))
     return ''.join(c for c in s if unicodedata.category(c) != 'Mn').replace('đ', 'd').replace('Đ', 'd').lower()
 
+# Danh mục chuyển đổi cụm từ không dấu từ sao kê sang tiếng Việt chuẩn có dấu và có nghĩa
+VIETNAMESE_PHRASE_RULES = [
+    # Cụm người & gia đình
+    (r'\bhoa:\b', 'Hòa:'),
+    (r'\bhoa\b', 'Hòa'),
+    (r'\bquynh\b', 'Quỳnh'),
+    (r'\bba lan\b', 'Bà Lan'),
+    (r'\bco giao\b', 'cô giáo'),
+    (r'\bthay co\b', 'thầy cô'),
+    (r'\bchau mai\b', 'cháu Mai'),
+    (r'\bchau\b', 'cháu'),
+    (r'\bong ba\b', 'ông bà'),
+    (r'\bbo me\b', 'bố mẹ'),
+    (r'\banh chi\b', 'anh chị'),
+
+    # Cụm sự kiện, cỗ bàn
+    (r'\ban cuoi\b', 'ăn cưới'),
+    (r'\bdam cuoi\b', 'đám cưới'),
+    (r'\ban hoi\b', 'ăn hỏi'),
+    (r'\bdam gio\b', 'đám giỗ'),
+    (r'\bsinh nhat\b', 'sinh nhật'),
+    (r'\bmung sinh nhat\b', 'mừng sinh nhật'),
+    (r'\bmung tho\b', 'mừng thọ'),
+    (r'\bthap huong\b', 'thắp hương'),
+    (r'\bmung tuoi\b', 'mừng tuổi'),
+    (r'\bli xi\b', 'lì xì'),
+
+    # Cụm ăn uống, chợ búa, đi chợ
+    (r'\bchan ngan\b', 'chân ngan'),
+    (r'\bthit ngan\b', 'thịt ngan'),
+    (r'\bthit bo\b', 'thịt bò'),
+    (r'\bthit lon\b', 'thịt lợn'),
+    (r'\bthit heo\b', 'thịt heo'),
+    (r'\bthit ga\b', 'thịt gà'),
+    (r'\bthit vit\b', 'thịt vịt'),
+    (r'\bhai san\b', 'hải sản'),
+    (r'\btom ca\b', 'tôm cá'),
+    (r'\brau cu\b', 'rau củ'),
+    (r'\bhoa qua\b', 'hoa quả'),
+    (r'\btrai cay\b', 'trái cây'),
+    (r'\btien cho\b', 'tiền chợ'),
+    (r'\btien an\b', 'tiền ăn'),
+    (r'\bdi cho hom\b', 'đi chợ Hôm'),
+    (r'\bdi cho\b', 'đi chợ'),
+    (r'\bcho hom\b', 'chợ Hôm'),
+    (r'\bcho sang\b', 'chợ sáng'),
+    (r'\bcho chieu\b', 'chợ chiều'),
+    (r'\ban sang\b', 'ăn sáng'),
+    (r'\ban trua\b', 'ăn trưa'),
+    (r'\ban toi\b', 'ăn tối'),
+    (r'\ban uong\b', 'ăn uống'),
+    (r'\bpho bo\b', 'phở bò'),
+    (r'\bpho ga\b', 'phở gà'),
+    (r'\bbun cha\b', 'bún chả'),
+    (r'\bbun bo\b', 'bún bò'),
+    (r'\bbanh mi\b', 'bánh mì'),
+    (r'\bcom rang\b', 'cơm rang'),
+    (r'\bcom tam\b', 'cơm tấm'),
+    (r'\bcom trua\b', 'cơm trưa'),
+    (r'\bca phe\b', 'cà phê'),
+    (r'\bcafe sang\b', 'cafe sáng'),
+    (r'\btra sua\b', 'trà sữa'),
+    (r'\bnuoc ep\b', 'nước ép'),
+    (r'\bsinh to\b', 'sinh tố'),
+    (r'\bgia vi\b', 'gia vị'),
+    (r'\bdau an\b', 'dầu ăn'),
+    (r'\bnuoc mam\b', 'nước mắm'),
+    (r'\bhat nem\b', 'hạt nêm'),
+    (r'\bmi chinh\b', 'mì chính'),
+    (r'\bbot ngot\b', 'bột ngọt'),
+    (r'\bduong muoi\b', 'đường muối'),
+
+    # Cụm bỉm sữa, gạo, con cái
+    (r'\bbim sua\b', 'bỉm sữa'),
+    (r'\bta bim\b', 'tã bỉm'),
+    (r'\bsua bot\b', 'sữa bột'),
+    (r'\bsua tuoi\b', 'sữa tươi'),
+    (r'\bsua chua\b', 'sữa chua'),
+    (r'\bvang sua\b', 'váng sữa'),
+    (r'\bgao st25\b', 'gạo ST25'),
+    (r'\bgao tam\b', 'gạo tám'),
+    (r'\bgao nep\b', 'gạo nếp'),
+    (r'\bgao\b', 'gạo'),
+    (r'\btien hoc them\b', 'tiền học thêm'),
+    (r'\bhoc them\b', 'học thêm'),
+    (r'\bhoc phi\b', 'học phí'),
+    (r'\btien hoc\b', 'tiền học'),
+    (r'\bhoc sam\b', 'học Sam'),
+    (r'\bsam hoc\b', 'Sam học'),
+    (r'\btruong sam\b', 'trường Sam'),
+    (r'\blop sam\b', 'lớp Sam'),
+    (r'\bsach truyen\b', 'sách truyện'),
+    (r'\bhoc lieu\b', 'học liệu'),
+    (r'\btap to\b', 'tập tô'),
+    (r'\bquy lop\b', 'quỹ lớp'),
+    (r'\bquy hoc\b', 'quỹ học'),
+    (r'\bquy phu huynh\b', 'quỹ phụ huynh'),
+    (r'\bdo choi\b', 'đồ chơi'),
+    (r'\bvui choi\b', 'vui chơi'),
+    (r'\bkhu vui choi\b', 'khu vui chơi'),
+
+    # Cụm hạ tầng, điện thoại, xe cộ
+    (r'\bo dien pana\b', 'ổ điện Panasonic'),
+    (r'\bo dien\b', 'ổ điện'),
+    (r'\bpana\b', 'Panasonic'),
+    (r'\btien dien\b', 'tiền điện'),
+    (r'\bdien luc\b', 'điện lực'),
+    (r'\bsac xe evo\b', 'sạc xe Evo'),
+    (r'\bsac xe\b', 'sạc xe'),
+    (r'\bxe dien\b', 'xe điện'),
+    (r'\btien nuoc\b', 'tiền nước'),
+    (r'\bnuoc sinh hoat\b', 'nước sinh hoạt'),
+    (r'\bnuoc sach\b', 'nước sạch'),
+    (r'\btien mang\b', 'tiền mạng'),
+    (r'\bcuoc mang\b', 'cước mạng'),
+    (r'\bcap quang\b', 'cáp quang'),
+    (r'\bdien thoai\b', 'điện thoại'),
+    (r'\bnap the\b', 'nạp thẻ'),
+    (r'\bcuoc dt\b', 'cước ĐT'),
+    (r'\brua xe\b', 'rửa xe'),
+    (r'\bgui xe\b', 'gửi xe'),
+    (r'\bdo xang\b', 'đổ xăng'),
+    (r'\bxang xe\b', 'xăng xe'),
+    (r'\bthay dau xe\b', 'thay dầu xe'),
+    (r'\bthay dau\b', 'thay dầu'),
+    (r'\bbao duong xe\b', 'bảo dưỡng xe'),
+    (r'\bbao duong\b', 'bảo dưỡng'),
+    (r'\bsua xe\b', 'sửa xe'),
+    (r'\bva sam\b', 'vá săm'),
+    (r'\bva lop\b', 'vá lốp'),
+    (r'\bthay sam\b', 'thay săm'),
+    (r'\bthay lop\b', 'thay lốp'),
+    (r'\bbao tri\b', 'bảo trì'),
+    (r'\bthiet bi\b', 'thiết bị'),
+    (r'\bmay moc\b', 'máy móc'),
+    (r'\bdo co khi\b', 'đồ cơ khí'),
+
+    # Cụm y tế, sức khỏe, làm đẹp
+    (r'\bthay pin dh quynh\b', 'thay pin đồng hồ Quỳnh'),
+    (r'\bthay pin dh\b', 'thay pin đồng hồ'),
+    (r'\bthay pin\b', 'thay pin'),
+    (r'\bdh quynh\b', 'đồng hồ Quỳnh'),
+    (r'\bdh\b', 'đồng hồ'),
+    (r'\blam dep\b', 'làm đẹp'),
+    (r'\blam toc\b', 'làm tóc'),
+    (r'\bcat toc\b', 'cắt tóc'),
+    (r'\buon toc\b', 'uốn tóc'),
+    (r'\bnhuom toc\b', 'nhuộm tóc'),
+    (r'\bgoi dau\b', 'gội đầu'),
+    (r'\blam nail\b', 'làm nail'),
+    (r'\blam mong\b', 'làm móng'),
+    (r'\bmy pham\b', 'mỹ phẩm'),
+    (r'\bquan ao\b', 'quần áo'),
+    (r'\bgiay dep\b', 'giày dép'),
+    (r'\btui xach\b', 'túi xách'),
+    (r'\bkham benh\b', 'khám bệnh'),
+    (r'\bkham thuoc\b', 'khám thuốc'),
+    (r'\bmua thuoc\b', 'mua thuốc'),
+    (r'\bthuoc ha sot\b', 'thuốc hạ sốt'),
+    (r'\bthuoc\b', 'thuốc'),
+    (r'\bha sot\b', 'hạ sốt'),
+    (r'\bnho mat\b', 'nhỏ mắt'),
+    (r'\bkhau trang\b', 'khẩu trang'),
+
+    # Cụm mua sắm, tài khoản, trả nợ
+    (r'\bmua 2 tk google sheet\b', 'Mua 2 tài khoản Google Sheet'),
+    (r'\bmua 2 tk\b', 'Mua 2 tài khoản'),
+    (r'\bmua tk google sheet\b', 'Mua tài khoản Google Sheet'),
+    (r'\bmua tk\b', 'Mua tài khoản'),
+    (r'\btk google sheet\b', 'tài khoản Google Sheet'),
+    (r'\btk google\b', 'tài khoản Google'),
+    (r'\bgoogle sheet\b', 'Google Sheet'),
+    (r'\btk\b', 'tài khoản'),
+    (r'\bsieu thi\b', 'siêu thị'),
+    (r'\btap hoa\b', 'tạp hóa'),
+    (r'\btra no\b', 'trả nợ'),
+    (r'\btrả no\b', 'trả nợ'),
+    (r'\btra nợ\b', 'trả nợ'),
+    (r'\bck tra no\b', 'chuyển khoản trả nợ'),
+    (r'\bchuyen khoan tra no\b', 'chuyển khoản trả nợ'),
+    (r'\bchuyen khoan\b', 'chuyển khoản'),
+    (r'\bchuyen tien\b', 'chuyển tiền'),
+    (r'\bhoan tien\b', 'hoàn tiền'),
+    (r'\bhoan hang\b', 'hoàn hàng'),
+    (r'\bhoan tra\b', 'hoàn trả'),
+    (r'\blai bank\b', 'lãi ngân hàng'),
+    (r'\bgoc bank\b', 'gốc ngân hàng'),
+    (r'\bthau chi\b', 'thấu chi'),
+
+    # Từ nối & hành động thường gặp
+    (r'\bdi\b', 'đi'),
+    (r'\bva\b', 'và'),
+    (r'\bvoi\b', 'với'),
+    (r'\bcho\b', 'cho'),
+    (r'\bmua\b', 'mua'),
+    (r'\bphi\b', 'phí'),
+    (r'\bthang (\d+)\b', r'tháng \1'),
+    (r'\bbuoi\b', 'buổi'),
+    (r'(\d+)\s*tr\b', r'\1 triệu'),
+    (r'(\d+)\s*k\b', r'\1k')
+]
+
+def restore_vietnamese_desc(desc):
+    """
+    Tự động phục hồi dấu tiếng Việt chuẩn và có nghĩa từ mô tả sao kê ngân hàng
+    (Ví dụ: 'Hoa: an cuoi chau mai' -> 'Hòa: ăn cưới cháu Mai', 'chan ngan' -> 'Chân ngan')
+    """
+    if not desc:
+        return ""
+    text = str(desc).strip()
+    
+    # Sắp xếp theo độ dài mẫu giảm dần để thay thế các cụm dài trước
+    sorted_rules = sorted(VIETNAMESE_PHRASE_RULES, key=lambda x: len(x[0]), reverse=True)
+    for pat, repl in sorted_rules:
+        text = re.sub(pat, repl, text, flags=re.IGNORECASE)
+        
+    # Cam kết bất di bất dịch: Con tên SAM (không bao giờ chuyển thành Sâm)
+    text = re.sub(r'\bsam\b', 'Sam', text, flags=re.IGNORECASE)
+    
+    # Chuẩn hóa khoảng trắng
+    text = re.sub(r'\s+', ' ', text).strip()
+    
+    # Viết hoa chữ cái đầu tiên
+    if text:
+        text = text[0].upper() + text[1:]
+    return text
+
 def auto_categorize(desc):
     t = strip_accents(desc)
     
@@ -97,6 +324,20 @@ def auto_categorize(desc):
         return "Quỹ học Sam (2tr/năm)", "Vợ (Quỳnh)"
     if any(k in t for k in ["co giao", "bieu co", "20/10", "20/11", "8/3"]):
         return "Quà cô giáo Sam (2,5tr/năm)", "Vợ (Quỳnh)"
+    # Ưu tiên các danh mục cụ thể trước danh mục chợ chung
+    if any(k in t for k in ["cat toc", "barber"]):
+        return "Cắt tóc (Hòa + Sam)", "Chồng (Hòa)"
+        
+    if any(k in t for k in ["benh vien", "bv dai hoc y", "dai hoc y", "phong kham", "thuoc hoa"]):
+        return "Hòa: Khám + Thuốc", "Chồng (Hòa)"
+    if any(k in t for k in ["pharmacity", "long chau", "ha sot", "men vi sinh", "siro", "thuoc sam", "kham sam", "thuoc"]):
+        if any(k in t for k in ["sam", "quynh", "ha sot", "siro", "con"]):
+            return "Thuốc Sam + Quỳnh", "Vợ (Quỳnh)"
+        return "Hòa: Khám + Thuốc", "Chồng (Hòa)"
+        
+    if any(k in t for k in ["an sang", "cafe", "ca phe", "highlands", "tra da", "pho bo", "pho ga", "bun cha", "xoi", "banh mi"]):
+        return "Hòa: Ăn sáng, cafe cá nhân", "Chồng (Hòa)"
+
     if any(k in t for k in ["chan ngan", "ngan", "tien cho", "tien an", "cho hom", "thit", "ca", "rau", "ga", "bo"]):
         return "Ăn uống, tiền chợ hàng ngày", "Vợ (Quỳnh)"
     if any(k in t for k in ["bim", "sua", "gao", "nan", "meiji", "pampers", "huggies"]):
@@ -139,22 +380,10 @@ def auto_categorize(desc):
         return "Hòa: Thiết bị, máy móc, đồ cơ khí", "Chồng (Hòa)"
     if any(k in t for k in ["chatgpt", "openai", "claude", "gemini", "cursor", "midjourney"]):
         return "Hòa: Phần mềm AI (Gemini, Claude, GPT)", "Chồng (Hòa)"
-    if any(k in t for k in ["benh vien", "bv dai hoc y", "dai hoc y", "kham benh", "phong kham", "thuoc hoa"]):
-        return "Hòa: Khám + Thuốc", "Chồng (Hòa)"
-    if any(k in t for k in ["pharmacity", "long chau", "ha sot", "men vi sinh", "siro", "thuoc sam"]):
-        return "Thuốc Sam + Quỳnh", "Vợ (Quỳnh)"
-    if any(k in t for k in ["cat toc", "barber"]):
-        return "Cắt tóc (Hòa + Sam)", "Chồng (Hòa)"
-    if any(k in t for k in ["quan ao sam", "giay sam", "dep sam"]):
+    if any(k in t for k in ["quan ao sam", "giay sam", "dep sam", "do choi sam"]):
         return "Quần áo, giày dép Sam", "Vợ (Quỳnh)"
-        
-    return "Chi Phí Khác (Đột xuất / Chưa liệt kê)", "Chồng (Hòa)"
-    if any(k in t for k in ["quần áo sam", "giày sam", "đồ chơi sam", "bánh sam", "búp bê"]):
-        return "Quần áo, giày dép Sam", "Vợ (Quỳnh)"
-    if any(k in t for k in ["chuyển khoản nhanh qua zalo", "zalo"]):
-        return "Hòa: Thiết bị, máy móc, đồ cơ khí", "Chồng (Hòa)"
     if "shopee" in t:
-        if "hòa" in t or "quạt" in t or "hdd" in t or "elmich" in t:
+        if any(k in t for k in ["hoa", "quat", "hdd", "elmich", "khoan"]):
             return "Hòa: Thiết bị, máy móc, đồ cơ khí", "Chồng (Hòa)"
         return "Quần áo, giày dép Quỳnh (TMĐT)", "Vợ (Quỳnh)"
         
@@ -392,7 +621,7 @@ def get_summary_data():
 def handle_add_manual():
     data = request.json
     date = data.get("date") or datetime.date.today().strftime("%d/%m/%Y")
-    desc = data.get("desc", "").strip()
+    desc = restore_vietnamese_desc(data.get("desc", "").strip())
     raw_amount = float(data.get("amount", 0))
     
     is_neg = (raw_amount < 0) or any(k in desc.lower() for k in ["hoàn tiền", "refund", "hoàn hàng", "hoàn trả", "hoan tien"])
@@ -537,6 +766,7 @@ def handle_parse_bank():
 
     matched_existing_indices = set()
     for date_str, desc_str, amt in raw_rows:
+        desc_clean = restore_vietnamese_desc(desc_str)
         if amt >= 10000:
             amt_k = int(amt / 1000)
         else:
@@ -582,20 +812,20 @@ def handle_parse_bank():
         
         if is_dup:
             parsed_items.append({
-                "date": date_str, "desc": desc_str, "amount": amt_k,
+                "date": date_str, "desc": desc_clean, "amount": amt_k,
                 "category": cat or "Đã lưu trước đó", "owner": owner or "-", "group": "",
                 "selected": False, "is_ignored": False, "is_duplicate": True
             })
         elif cat is None:
             parsed_items.append({
-                "date": date_str, "desc": desc_str, "amount": amt_k,
+                "date": date_str, "desc": desc_clean, "amount": amt_k,
                 "category": owner, "owner": "", "group": "",
                 "selected": False, "is_ignored": True, "is_duplicate": False
             })
         else:
             group = CATEGORY_MAP.get(cat, {}).get("group", "8. Chi Phí Phát Sinh")
             parsed_items.append({
-                "date": date_str, "desc": desc_str, "amount": amt_k,
+                "date": date_str, "desc": desc_clean, "amount": amt_k,
                 "category": cat, "owner": owner, "group": group,
                 "selected": True, "is_ignored": False, "is_duplicate": False
             })
