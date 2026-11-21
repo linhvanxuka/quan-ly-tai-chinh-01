@@ -51,7 +51,29 @@ function doPost(e) {
     if (!sheet) {
       sheet = ss.insertSheet("Chi Tiêu Thực Tế");
     }
-    var body = JSON.parse(e.postData.contents);
+    
+    // Hỗ trợ cả JSON body và form-encoded (payload field)
+    var body;
+    var raw = (e.postData && e.postData.contents) ? e.postData.contents : "";
+    
+    // Thử parse trực tiếp JSON
+    try {
+      body = JSON.parse(raw);
+    } catch (e1) {
+      // Nếu không phải JSON thuần, thử lấy field 'payload'
+      try {
+        var decoded = decodeURIComponent(raw.replace(/^payload=/, ""));
+        body = JSON.parse(decoded);
+      } catch (e2) {
+        // Thử lấy từ parameter e.parameter
+        if (e.parameter && e.parameter.payload) {
+          body = JSON.parse(e.parameter.payload);
+        } else {
+          throw new Error("Cannot parse request body: " + raw.substring(0, 100));
+        }
+      }
+    }
+    
     var rows = body.rows;
     if (rows && rows.length > 0) {
       for (var i = 0; i < rows.length; i++) {
@@ -62,4 +84,53 @@ function doPost(e) {
   } catch (err) {
     return ContentService.createTextOutput(JSON.stringify({success: false, error: err.toString()})).setMimeType(ContentService.MimeType.JSON);
   }
+}
+
+// doGet cũng xử lý được action=append (gửi qua query string khi POST bị redirect)
+function doGet(e) {
+  // Nếu có action=append → ghi dữ liệu
+  if (e.parameter && e.parameter.action === "append" && e.parameter.payload) {
+    try {
+      var ss = SpreadsheetApp.getActiveSpreadsheet();
+      var sheet = ss.getSheetByName("Chi Tiêu Thực Tế");
+      if (!sheet) sheet = ss.insertSheet("Chi Tiêu Thực Tế");
+      var body = JSON.parse(e.parameter.payload);
+      var rows = body.rows;
+      if (rows && rows.length > 0) {
+        for (var i = 0; i < rows.length; i++) {
+          sheet.appendRow(rows[i]);
+        }
+      }
+      return ContentService.createTextOutput(JSON.stringify({success: true, count: rows ? rows.length : 0})).setMimeType(ContentService.MimeType.JSON);
+    } catch (err) {
+      return ContentService.createTextOutput(JSON.stringify({success: false, error: err.toString()})).setMimeType(ContentService.MimeType.JSON);
+    }
+  }
+  
+  // Mặc định: trả về danh sách chi tiêu
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName("Chi Tiêu Thực Tế");
+  if (!sheet) {
+    return ContentService.createTextOutput(JSON.stringify({expenses: []})).setMimeType(ContentService.MimeType.JSON);
+  }
+  var data = sheet.getDataRange().getValues();
+  var expenses = [];
+  for (var i = 1; i < data.length; i++) {
+    var row = data[i];
+    if (row[0] && row[1]) {
+      var amt = Number(row[2]) || 0;
+      if (amt >= 10000) amt = Math.round(amt / 1000);
+      expenses.push({
+        date: String(row[0]),
+        desc: String(row[1] || ""),
+        amount: amt,
+        category: String(row[3] || ""),
+        owner: String(row[4] || ""),
+        group: String(row[5] || ""),
+        source: String(row[6] || ""),
+        status: String(row[7] || "")
+      });
+    }
+  }
+  return ContentService.createTextOutput(JSON.stringify({expenses: expenses})).setMimeType(ContentService.MimeType.JSON);
 }

@@ -204,13 +204,42 @@ def append_to_sheet(rows):
     global GSHEETS_URL
     url_to_use = GSHEETS_URL
     if url_to_use:
+        import json as _json
+        payload_str = _json.dumps({"rows": rows})
+        
+        # Phương án 1: POST JSON thông thường (không follow redirect để tránh mất body)
         try:
-            r = requests.post(url_to_use, json={"rows": rows}, timeout=15, allow_redirects=True)
-            is_html = "text/html" in r.headers.get("Content-Type", "").lower() or "<!doctype" in r.text.lower()
-            if r.status_code in [200, 302] and not is_html:
-                return True, "Thành công"
-            else:
-                return False, f"Google Apps Script trả về lỗi (HTTP {r.status_code}). Nguyên nhân: Quyền truy cập chưa chọn 'Bất kỳ ai (Anyone)' hoặc URL Web App chưa đúng."
+            r = requests.post(url_to_use, json={"rows": rows}, timeout=15, allow_redirects=False)
+            if r.status_code == 200:
+                is_html = "text/html" in r.headers.get("Content-Type", "").lower() or "<!doctype" in r.text.lower()
+                if not is_html:
+                    return True, "Thành công"
+            # Nếu bị redirect (302/303) → Google Apps Script đã nhận POST trước redirect
+            # Thử xem body trước redirect có kết quả không
+            if r.status_code in [301, 302, 303, 307, 308]:
+                # POST đã được tiếp nhận bởi Apps Script trước khi redirect
+                # Google Apps Script 302 sau doPost = thành công
+                # Kiểm tra bằng cách GET danh sách (không cần thiết, cứ coi là OK)
+                pass
+        except Exception:
+            pass
+        
+        # Phương án 2: GET với payload trong query string (bypass redirect issue)
+        try:
+            import urllib.parse as _up
+            get_url = url_to_use + "?action=append&payload=" + _up.quote(payload_str)
+            r2 = requests.get(get_url, timeout=20, allow_redirects=True)
+            is_html2 = "text/html" in r2.headers.get("Content-Type", "").lower() or "<!doctype" in r2.text.lower()
+            if r2.status_code == 200 and not is_html2:
+                try:
+                    result = r2.json()
+                    if result.get("success"):
+                        return True, "Thành công"
+                    else:
+                        return False, f"Apps Script lỗi: {result.get('error', 'unknown')}"
+                except Exception:
+                    pass
+            return False, f"Google Apps Script trả về lỗi (HTTP {r2.status_code}). Vui lòng kiểm tra cài đặt quyền truy cập 'Bất kỳ ai' trong Apps Script."
         except Exception as e:
             return False, f"Lỗi kết nối tới Google Apps Script: {str(e)}"
             
