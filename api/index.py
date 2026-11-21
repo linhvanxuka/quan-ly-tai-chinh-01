@@ -57,47 +57,50 @@ BUDGET_PLAN = [
 
 CATEGORY_MAP = {c["name"]: c for c in BUDGET_PLAN}
 
-def normalize_text(text):
-    if not text:
+def strip_accents(s):
+    import unicodedata
+    if not s:
         return ""
-    return str(text).lower()
+    s = unicodedata.normalize('NFD', str(s))
+    return ''.join(c for c in s if unicodedata.category(c) != 'Mn').replace('đ', 'd').replace('Đ', 'd').lower()
 
 def auto_categorize(desc):
-    t = normalize_text(desc)
+    t = strip_accents(desc)
     
-    if any(k in t for k in ["lãi vib", "gốc vib", "thấu chi", "bà lan", "trả nợ", "chuyển khoản trả nợ"]):
+    if any(k in t for k in ["lai vib", "goc vib", "thau chi", "ba lan", "tra no", "ck tra no", "chuyen khoan tra no"]):
         return None, "Bỏ qua (Trả nợ Bank/Bà Lan - có tài khoản riêng)"
+        
     # Nhận diện khoản hoàn tiền mua sắm (Shopee, TikTok, hoàn hàng)
-    is_refund = any(k in t for k in ["hoàn tiền", "refund", "hoàn hàng", "hoàn trả", "trả hàng", "hoan tien"])
+    is_refund = any(k in t for k in ["hoan tien", "refund", "hoan hang", "hoan tra", "tra hang"])
     if is_refund:
         if any(k in t for k in ["shopee", "zalo", "tiktok", "lazada", "tiki"]):
-            if any(k in t for k in ["hòa", "quạt", "hdd", "máy", "cơ khí", "khoan"]):
+            if any(k in t for k in ["hoa", "quat", "hdd", "may", "co khi", "khoan"]):
                 return "Hòa: Thiết bị, máy móc, đồ cơ khí", "Chồng (Hòa)"
             return "Quần áo, giày dép Quỳnh (TMĐT)", "Vợ (Quỳnh)"
         return "Chi Phí Khác (Đột xuất / Chưa liệt kê)", "Chồng (Hòa)"
 
-    if any(k in t for k in ["lãi tiền gửi", "tặng tiền mặt", "tiền lương", "thu hồi nợ"]):
+    if any(k in t for k in ["lai tien gui", "tang tien mat", "tien luong", "thu hoi no"]):
         return None, "Bỏ qua (Khoản thu nhập/Lương thưởng)"
         
-    if any(k in t for k in ["học sam", "trường sam", "mầm non sam", "tiểu học sam"]):
+    if any(k in t for k in ["hoc sam", "truong sam", "mam non sam", "tieu hoc sam"]):
         return "Học Sam (chính khóa)", "Vợ (Quỳnh)"
-    if any(k in t for k in ["học thêm", "tiền học thêm"]):
+    if any(k in t for k in ["hoc them", "tien hoc them"]):
         return "Tiền học thêm con (120k x 9 buổi)", "Vợ (Quỳnh)"
-    if any(k in t for k in ["sách", "truyện", "tập tô", "học liệu"]):
+    if any(k in t for k in ["sach", "truyen", "tap to", "hoc lieu"]):
         return "Sách truyện, học liệu con", "Vợ (Quỳnh)"
-    if any(k in t for k in ["quỹ lớp", "quỹ học"]):
+    if any(k in t for k in ["quy lop", "quy hoc"]):
         return "Quỹ học Sam (2tr/năm)", "Vợ (Quỳnh)"
-    if any(k in t for k in ["cô giáo", "biếu cô", "20/10", "20/11", "8/3"]):
+    if any(k in t for k in ["co giao", "bieu co", "20/10", "20/11", "8/3"]):
         return "Quà cô giáo Sam (2,5tr/năm)", "Vợ (Quỳnh)"
-    if any(k in t for k in ["tiền chợ", "tiền ăn", "chợ hôm", "thịt", "cá", "rau"]):
+    if any(k in t for k in ["chan ngan", "ngan", "tien cho", "tien an", "cho hom", "thit", "ca", "rau", "ga", "bo"]):
         return "Ăn uống, tiền chợ hàng ngày", "Vợ (Quỳnh)"
-    if any(k in t for k in ["bỉm", "sữa", "gạo", "nan", "meiji", "pampers", "huggies"]):
+    if any(k in t for k in ["bim", "sua", "gao", "nan", "meiji", "pampers", "huggies"]):
         return "Bỉm sữa, gạo", "Vợ (Quỳnh)"
-    if any(k in t for k in ["tiền điện", "evn", "điện lực", "sạc xe evo", "sạc xe"]):
+    if any(k in t for k in ["tien dien", "evn", "dien luc", "sac xe evo", "sac xe"]):
         return "Tiền điện (bao gồm sạc 2 xe điện)", "Chồng (Hòa)"
-    if any(k in t for k in ["tiền nước", "nước sinh hoạt", "cấp nước", "sawaco", "viwaco"]):
+    if any(k in t for k in ["tien nuoc", "nuoc sinh hoat", "cap nuoc", "sawaco", "viwaco"]):
         return "Nước sinh hoạt", "Chồng (Hòa)"
-    if any(k in t for k in ["internet", "fpt telecom", "vnpt", "cáp quang"]):
+    if any(k in t for k in ["internet", "fpt telecom", "vnpt", "cap quang"]):
         return "Internet cáp quang", "Chồng (Hòa)"
     if "339" in t:
         return "Điện thoại Hòa ĐT 339", "Chồng (Hòa)"
@@ -107,36 +110,40 @@ def auto_categorize(desc):
         return "Điện thoại ĐT 1881", "Chồng (Hòa)"
     if "6336" in t:
         return "Điện thoại ĐT 6336", "Chồng (Hòa)"
-    if any(k in t for k in ["rửa xe", "gửi xe", "vé xe", "bãi xe"]):
+    if any(k in t for k in ["rua xe", "gui xe", "ve xe", "bai xe"]):
         return "Rửa xe, gửi xe", "Chồng (Hòa)"
-    if any(k in t for k in ["bảo dưỡng", "bảo trì", "sửa máy", "lõi lọc", "sửa điều hòa"]):
+    if any(k in t for k in ["bao duong", "bao tri", "sua may", "loi loc", "sua dieu hoa"]):
         return "Bảo trì thiết bị gia đình", "Chồng (Hòa)"
-    if any(k in t for k in ["siêu thị", "winmart", "coopmart", "lotte", "mega market", "bách hóa xanh", "aeon"]):
+    if any(k in t for k in ["sieu thi", "winmart", "coopmart", "lotte", "mega market", "bach hoa xanh", "aeon"]):
         return "Đi siêu thị hàng tuần (*4 tuần)", "Vợ (Quỳnh)"
-    if any(k in t for k in ["nhà hàng", "lẩu", "nướng", "kichi", "gogi", "buffet", "haidilao", "ăn tối", "đi chơi"]):
+    if any(k in t for k in ["nha hang", "lau", "nuong", "kichi", "gogi", "buffet", "haidilao", "an toi", "di choi"]):
         return "Tiền ăn tối, đi chơi hàng tuần (*4 tuần)", "Chồng (Hòa)"
-    if any(k in t for k in ["tiniworld", "tini", "khu vui chơi"]):
+    if any(k in t for k in ["tiniworld", "tini", "khu vui choi"]):
         return "Sam chơi TiNiWorld / Vui chơi", "Vợ (Quỳnh)"
-    if any(k in t for k in ["làm đẹp", "spa", "nail", "móng", "gội đầu", "massage", "skincare"]):
+    if any(k in t for k in ["pin dh quynh", "lam dep", "spa", "nail", "mong", "goi dau", "massage", "skincare"]):
         return "Chi làm đẹp Quỳnh", "Vợ (Quỳnh)"
-    if any(k in t for k in ["váy", "quần áo quỳnh", "đầm quỳnh", "giày quỳnh"]):
+    if any(k in t for k in ["vay", "quan ao quynh", "dam quynh", "giay quynh"]):
         return "Quần áo, giày dép Quỳnh (TMĐT)", "Vợ (Quỳnh)"
-    if any(k in t for k in ["bún", "phở", "bánh mì", "xôi", "ăn sáng", "cơm", "cafe", "cà phê", "highlands", "trà đá"]):
+    if any(k in t for k in ["bun", "pho", "banh mi", "xoi", "an sang", "com", "cafe", "ca phe", "highlands", "tra da"]):
         return "Hòa: Ăn sáng, cafe cá nhân", "Chồng (Hòa)"
-    if any(k in t for k in ["tiếp khách", "gặp đối tác", "mời cơm", "nhậu"]):
+    if any(k in t for k in ["tiep khach", "gap doi tac", "moi com", "nhau"]):
         return "Hòa: Ăn uống tiếp khách, ngoại giao", "Chồng (Hòa)"
-    if any(k in t for k in ["áo sơ mi", "quần âu", "quần áo hòa", "giày hòa"]):
+    if any(k in t for k in ["ao so mi", "quan au", "quan ao hoa", "giay hoa"]):
         return "Quần áo, giày dép Hòa", "Chồng (Hòa)"
-    if any(k in t for k in ["cơ khí", "máy móc", "khoan", "dụng cụ", "box hdd", "thiết bị", "diy"]):
+    if any(k in t for k in ["2 o dien pana", "o dien", "pana", "co khi", "may moc", "khoan", "dung cu", "box hdd", "thiet bi", "diy"]):
         return "Hòa: Thiết bị, máy móc, đồ cơ khí", "Chồng (Hòa)"
     if any(k in t for k in ["chatgpt", "openai", "claude", "gemini", "cursor", "midjourney"]):
         return "Hòa: Phần mềm AI (Gemini, Claude, GPT)", "Chồng (Hòa)"
-    if any(k in t for k in ["bệnh viện", "bv đại học y", "đại học y", "khám bệnh", "phòng khám", "thuốc hòa"]):
+    if any(k in t for k in ["benh vien", "bv dai hoc y", "dai hoc y", "kham benh", "phong kham", "thuoc hoa"]):
         return "Hòa: Khám + Thuốc", "Chồng (Hòa)"
-    if any(k in t for k in ["pharmacity", "long châu", "hạ sốt", "men vi sinh", "siro", "thuốc sam"]):
+    if any(k in t for k in ["pharmacity", "long chau", "ha sot", "men vi sinh", "siro", "thuoc sam"]):
         return "Thuốc Sam + Quỳnh", "Vợ (Quỳnh)"
-    if any(k in t for k in ["cắt tóc", "barber"]):
+    if any(k in t for k in ["cat toc", "barber"]):
         return "Cắt tóc (Hòa + Sam)", "Chồng (Hòa)"
+    if any(k in t for k in ["quan ao sam", "giay sam", "dep sam"]):
+        return "Quần áo, giày dép Sam", "Vợ (Quỳnh)"
+        
+    return "Chi Phí Khác (Đột xuất / Chưa liệt kê)", "Chồng (Hòa)"
     if any(k in t for k in ["quần áo sam", "giày sam", "đồ chơi sam", "bánh sam", "búp bê"]):
         return "Quần áo, giày dép Sam", "Vợ (Quỳnh)"
     if any(k in t for k in ["chuyển khoản nhanh qua zalo", "zalo"]):
@@ -424,16 +431,16 @@ def handle_parse_bank():
         desc_col = 2
         amt_col = 3
         
-        for r in range(1, min(15, sheet.max_row + 1)):
-            row_vals = [str(sheet.cell(r, c).value or "").lower() for c in range(1, min(10, sheet.max_column + 1))]
+        for r in range(1, min(35, sheet.max_row + 1)):
+            row_vals = [str(sheet.cell(r, c).value or "").lower() for c in range(1, min(15, sheet.max_column + 1))]
             for c_idx, val in enumerate(row_vals, 1):
-                if "ngày" in val:
+                if any(k in val for k in ["ngày", "date"]):
                     date_col = c_idx
-                if "nội dung" in val or "diễn giải" in val:
+                if any(k in val for k in ["nội dung", "diễn giải", "description", "chi tiết"]):
                     desc_col = c_idx
-                if "số tiền" in val or "tiền ghi nợ" in val:
+                if any(k in val for k in ["ghi nợ", "tiền ghi nợ", "số tiền", "debit", "amount"]):
                     amt_col = c_idx
-            if any("ngày" in v for v in row_vals) and any("nội dung" in v for v in row_vals):
+            if any("ngày" in v or "date" in v for v in row_vals) and any("nội dung" in v or "description" in v or "diễn giải" in v for v in row_vals):
                 header_row = r
                 break
                 
@@ -468,16 +475,16 @@ def handle_parse_bank():
         date_col = 0
         desc_col = 1
         amt_col = 2
-        for r_idx, r in enumerate(csv_rows[:15]):
+        for r_idx, r in enumerate(csv_rows[:35]):
             low = [str(c).lower() for c in r]
             for c_idx, val in enumerate(low):
-                if "ngày" in val:
+                if any(k in val for k in ["ngày", "date"]):
                     date_col = c_idx
-                if "nội dung" in val or "diễn giải" in val:
+                if any(k in val for k in ["nội dung", "diễn giải", "description", "chi tiết"]):
                     desc_col = c_idx
-                if "số tiền" in val or "tiền ghi nợ" in val:
+                if any(k in val for k in ["ghi nợ", "tiền ghi nợ", "số tiền", "debit", "amount"]):
                     amt_col = c_idx
-            if any("ngày" in v for v in low) and any("nội dung" in v for v in low):
+            if any("ngày" in v or "date" in v for v in low) and any("nội dung" in v or "description" in v or "diễn giải" in v for v in low):
                 header_row = r_idx
                 break
         for r in csv_rows[header_row + 1:]:

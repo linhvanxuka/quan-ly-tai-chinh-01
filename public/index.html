@@ -636,6 +636,10 @@
         // Bank Statement Upload
         async function handleFileSelect(e) {
             const file = e.target.files[0];
+            if (file) uploadVIBFile(file);
+        }
+
+        async function uploadVIBFile(file) {
             if (!file) return;
 
             document.getElementById('file-name-display').innerText = file.name;
@@ -653,8 +657,8 @@
                     body: formData
                 });
                 const data = await res.json();
-                parsedBatchItems = data.items;
-                document.getElementById('parsed-count').innerText = data.total;
+                parsedBatchItems = data.items || [];
+                document.getElementById('parsed-count').innerText = data.total || 0;
 
                 renderParsedBatch(parsedBatchItems);
                 document.getElementById('review-section').classList.remove('hidden');
@@ -664,6 +668,39 @@
                 document.getElementById('upload-loading').classList.add('hidden');
             }
         }
+
+        // Kéo thả file (Drag and Drop)
+        window.addEventListener('DOMContentLoaded', () => {
+            const dropzone = document.getElementById('dropzone');
+            if (dropzone) {
+                ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(evt => {
+                    dropzone.addEventListener(evt, e => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                    }, false);
+                });
+
+                ['dragenter', 'dragover'].forEach(evt => {
+                    dropzone.addEventListener(evt, () => {
+                        dropzone.classList.add('border-blue-500', 'bg-blue-100/50');
+                    }, false);
+                });
+
+                ['dragleave', 'drop'].forEach(evt => {
+                    dropzone.addEventListener(evt, () => {
+                        dropzone.classList.remove('border-blue-500', 'bg-blue-100/50');
+                    }, false);
+                });
+
+                dropzone.addEventListener('drop', e => {
+                    const dt = e.dataTransfer;
+                    if (dt && dt.files && dt.files.length > 0) {
+                        const file = dt.files[0];
+                        uploadVIBFile(file);
+                    }
+                }, false);
+            }
+        });
 
         function updateBatchCategory(idx, catName) {
             parsedBatchItems[idx].category = catName;
