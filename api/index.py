@@ -8,10 +8,10 @@ from flask import Flask, render_template, request, jsonify
 import openpyxl
 import requests
 
-# Khởi tạo Flask với đường dẫn template chuẩn cho cả local và Vercel
 current_dir = os.path.dirname(os.path.abspath(__file__))
 root_dir = os.path.abspath(os.path.join(current_dir, ".."))
 template_dir = os.path.join(root_dir, "templates")
+public_dir = os.path.join(root_dir, "public")
 
 app = Flask(__name__, template_folder=template_dir)
 
@@ -19,10 +19,8 @@ SPREADSHEET_ID = os.environ.get("SPREADSHEET_ID", "1OdHwBFJ5L5JO5_Q_pk-_F_acBHUb
 ACTUAL_SHEET = "Chi Tiêu Thực Tế"
 GSHEETS_URL = os.environ.get("GSHEETS_URL", "")
 
-# In-memory storage dự phòng khi deploy Vercel mà chưa dán URL Apps Script
 FALLBACK_EXPENSES = []
 
-# Danh mục kế hoạch 27.000k (Đơn vị: nghìn đồng / k)
 BUDGET_PLAN = [
     {"id": 1, "group": "1. Cố Định Con Cái", "name": "Học Sam (chính khóa)", "owner": "Vợ (Quỳnh)", "budget": 3500},
     {"id": 2, "group": "1. Cố Định Con Cái", "name": "Tiền học thêm con (120k x 9 buổi)", "owner": "Vợ (Quỳnh)", "budget": 1080},
@@ -54,7 +52,6 @@ BUDGET_PLAN = [
     {"id": 28, "group": "7. Biến Đổi Y Tế", "name": "Thuốc Sam + Quỳnh", "owner": "Vợ (Quỳnh)", "budget": 300},
     {"id": 29, "group": "7. Biến Đổi Y Tế", "name": "Cắt tóc (Hòa + Sam)", "owner": "Chồng (Hòa)", "budget": 160},
     {"id": 30, "group": "7. Biến Đổi Y Tế", "name": "Quần áo, giày dép Sam", "owner": "Vợ (Quỳnh)", "budget": 300},
-    # Mục 31: Chi phí khác (hạn mức ban đầu = 0)
     {"id": 31, "group": "8. Chi Phí Phát Sinh", "name": "Chi Phí Khác (Đột xuất / Chưa liệt kê)", "owner": "Chồng (Hòa)", "budget": 0}
 ]
 
@@ -68,13 +65,11 @@ def normalize_text(text):
 def auto_categorize(desc):
     t = normalize_text(desc)
     
-    # 1. Trả nợ bank / kinh doanh / tiền vào -> bỏ qua
     if any(k in t for k in ["lãi vib", "gốc vib", "thấu chi", "bà lan", "trả nợ", "chuyển khoản trả nợ"]):
         return None, "Bỏ qua (Trả nợ Bank/Bà Lan - có tài khoản riêng)"
     if any(k in t for k in ["hoàn tiền", "lãi tiền gửi", "tặng tiền mặt", "tiền lương", "thu hồi nợ"]):
         return None, "Bỏ qua (Khoản thu nhập/Hoàn tiền)"
         
-    # 2. Nhận diện các hạng mục theo từ khóa
     if any(k in t for k in ["học sam", "trường sam", "mầm non sam", "tiểu học sam"]):
         return "Học Sam (chính khóa)", "Vợ (Quỳnh)"
     if any(k in t for k in ["học thêm", "tiền học thêm"]):
@@ -145,8 +140,6 @@ def auto_categorize(desc):
     return "Chi Phí Khác (Đột xuất / Chưa liệt kê)", "Chồng (Hòa)"
 
 def fetch_actual_expenses():
-    """Đọc dữ liệu từ Google Sheets: ưu tiên GSHEETS_URL (Vercel) hoặc CLI gsheets (Local)"""
-    # 1. Nếu có Google Apps Script Web App URL
     if GSHEETS_URL:
         try:
             r = requests.get(GSHEETS_URL, timeout=8)
@@ -156,7 +149,6 @@ def fetch_actual_expenses():
         except Exception as e:
             print("Lỗi fetch qua Apps Script:", e)
 
-    # 2. Nếu chạy local có CLI gsheets
     try:
         cmd = ["gsheets", "readonly", "read", SPREADSHEET_ID, f"'{ACTUAL_SHEET}'!A2:H500"]
         res = subprocess.run(cmd, capture_output=True, text=True)
@@ -172,7 +164,6 @@ def fetch_actual_expenses():
                         cat = parts[2].strip()
                         amount_str = parts[3].strip().replace(".", "").replace(",", "")
                         amount = int(float(amount_str)) if amount_str else 0
-                        # Nếu trong sheet số tiền vẫn ở dạng full VNĐ (>=10000), tự chia 1000
                         if amount >= 10000:
                             amount = int(amount / 1000)
                         owner = parts[4].strip() if len(parts) > 4 else ""
@@ -180,14 +171,9 @@ def fetch_actual_expenses():
                         source = parts[6].strip() if len(parts) > 6 else ""
                         status = parts[7].strip() if len(parts) > 7 else ""
                         expenses.append({
-                            "date": date,
-                            "group": group,
-                            "category": cat,
-                            "amount": amount,
-                            "owner": owner,
-                            "desc": desc,
-                            "source": source,
-                            "status": status
+                            "date": date, "group": group, "category": cat,
+                            "amount": amount, "owner": owner, "desc": desc,
+                            "source": source, "status": status
                         })
                     except Exception as e:
                         continue
@@ -196,11 +182,9 @@ def fetch_actual_expenses():
     except Exception as e:
         pass
 
-    # 3. Fallback bộ nhớ tạm
     return FALLBACK_EXPENSES
 
 def append_to_sheet(rows):
-    """Ghi dữ liệu: gọi Google Apps Script Web App (Vercel) hoặc CLI gsheets (Local)"""
     if GSHEETS_URL:
         try:
             r = requests.post(GSHEETS_URL, json={"rows": rows}, timeout=10)
@@ -209,7 +193,6 @@ def append_to_sheet(rows):
         except Exception as e:
             print("Lỗi POST qua Apps Script:", e)
             
-    # Thử qua gsheets CLI
     try:
         batch_val = "|".join([",".join([str(x).replace(",", " ") for x in row]) for row in rows])
         cmd = ["gsheets", "mutate", "append", SPREADSHEET_ID, f"'{ACTUAL_SHEET}'", batch_val]
@@ -219,7 +202,6 @@ def append_to_sheet(rows):
     except Exception as e:
         pass
 
-    # Fallback ghi tạm vào bộ nhớ
     for r in rows:
         FALLBACK_EXPENSES.append({
             "date": r[0], "group": r[1], "category": r[2], "amount": r[3],
@@ -227,20 +209,32 @@ def append_to_sheet(rows):
         })
     return True, "Đã lưu tạm thời"
 
+# Phục vụ file HTML giao diện chính trên cả local và Vercel
 @app.route("/")
+@app.route("/api")
+@app.route("/api/index")
+@app.route("/api/")
 def index():
+    for p in [
+        os.path.join(public_dir, "index.html"),
+        os.path.join(template_dir, "index.html"),
+        "public/index.html",
+        "templates/index.html"
+    ]:
+        if os.path.exists(p):
+            with open(p, "r", encoding="utf-8") as f:
+                return f.read(), 200, {"Content-Type": "text/html; charset=utf-8"}
     return render_template("index.html")
 
 @app.route("/api/summary", methods=["GET"])
+@app.route("/summary", methods=["GET"])
 def get_summary():
     expenses = fetch_actual_expenses()
     
-    # Tính toán chi tiêu theo nghìn đồng (k)
     cat_spent = {c["name"]: 0 for c in BUDGET_PLAN}
     for e in expenses:
         cat = e.get("category", "")
         amt = e.get("amount", 0)
-        # Chuẩn hóa về nghìn đồng
         if amt >= 10000:
             amt = int(amt / 1000)
         if cat in cat_spent:
@@ -248,9 +242,9 @@ def get_summary():
         else:
             cat_spent["Chi Phí Khác (Đột xuất / Chưa liệt kê)"] += amt
             
-    total_budget = 27000 # 27.000k
-    wife_budget = 19440  # 19.440k
-    husband_budget = 7560 # 7.560k
+    total_budget = 27000
+    wife_budget = 19440
+    husband_budget = 7560
     
     total_spent = sum(cat_spent.values())
     wife_spent = 0
@@ -283,7 +277,7 @@ def get_summary():
                     "title": f"Cận Ngưỡng: {name}",
                     "message": f"Đã tiêu {percent}% ({spent:,}k / {budget:,}k)."
                 })
-        else: # Chi phí khác
+        else:
             if spent > 0:
                 status = "other_alert"
                 alerts.append({
@@ -353,15 +347,13 @@ def get_summary():
     })
 
 @app.route("/api/add-manual", methods=["POST"])
+@app.route("/add-manual", methods=["POST"])
 def add_manual():
     data = request.json
     date = data.get("date") or datetime.date.today().strftime("%d/%m/%Y")
     desc = data.get("desc", "").strip()
     raw_amount = float(data.get("amount", 0))
     
-    # Chuẩn hóa về đơn vị nghìn đồng (k)
-    # Nếu người dùng gõ 45000 -> tự chuyển thành 45
-    # Nếu người dùng gõ 45 -> giữ nguyên là 45
     if raw_amount >= 1000:
         amount_k = int(raw_amount / 1000)
     else:
@@ -384,6 +376,7 @@ def add_manual():
     return jsonify({"success": success, "message": f"Đã lưu thành công: {amount_k:,}k ({desc})"})
 
 @app.route("/api/suggest-category", methods=["POST"])
+@app.route("/suggest-category", methods=["POST"])
 def suggest_category():
     data = request.json
     desc = data.get("desc", "")
@@ -391,6 +384,7 @@ def suggest_category():
     return jsonify({"category": cat, "owner": owner})
 
 @app.route("/api/parse-bank", methods=["POST"])
+@app.route("/parse-bank", methods=["POST"])
 def parse_bank():
     if "file" not in request.files:
         return jsonify({"error": "Không tìm thấy file tải lên"}), 400
@@ -445,7 +439,6 @@ def parse_bank():
             except:
                 continue
                 
-            # Chuẩn hóa về đơn vị k (nghìn đồng)
             if amt >= 10000:
                 amt_k = int(amt / 1000)
             else:
@@ -453,32 +446,23 @@ def parse_bank():
                 
             cat, owner = auto_categorize(desc_str)
             
-            if cat is None: # Khoản loại bỏ (trả nợ bank, tiền vào)
+            if cat is None:
                 parsed_items.append({
-                    "date": date_str,
-                    "desc": desc_str,
-                    "amount": amt_k,
-                    "category": owner,
-                    "owner": "",
-                    "group": "",
-                    "selected": False,
-                    "is_ignored": True
+                    "date": date_str, "desc": desc_str, "amount": amt_k,
+                    "category": owner, "owner": "", "group": "",
+                    "selected": False, "is_ignored": True
                 })
             else:
                 group = CATEGORY_MAP.get(cat, {}).get("group", "8. Chi Phí Phát Sinh")
                 parsed_items.append({
-                    "date": date_str,
-                    "desc": desc_str,
-                    "amount": amt_k,
-                    "category": cat,
-                    "owner": owner,
-                    "group": group,
-                    "selected": True,
-                    "is_ignored": False
+                    "date": date_str, "desc": desc_str, "amount": amt_k,
+                    "category": cat, "owner": owner, "group": group,
+                    "selected": True, "is_ignored": False
                 })
     return jsonify({"items": parsed_items, "total": len(parsed_items)})
 
 @app.route("/api/save-batch", methods=["POST"])
+@app.route("/save-batch", methods=["POST"])
 def save_batch():
     items = request.json.get("items", [])
     if not items:
@@ -498,7 +482,5 @@ def save_batch():
     success, msg = append_to_sheet(rows)
     return jsonify({"success": success, "count": len(rows)})
 
-# Hỗ trợ chạy local
 if __name__ == "__main__":
-    print("Khởi động Ứng Dụng Quản Lý Tài Chính (Đơn vị: nghìn đồng / k)...")
     app.run(host="0.0.0.0", port=5001, debug=True)
