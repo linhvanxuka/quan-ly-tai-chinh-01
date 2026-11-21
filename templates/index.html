@@ -368,9 +368,14 @@
                         <h2 class="text-base font-bold text-slate-900">Nhật Ký Các Giao Dịch Gần Đây</h2>
                         <p class="text-xs text-slate-500">Được đồng bộ trực tiếp từ sheet 'Chi Tiêu Thực Tế'</p>
                     </div>
-                    <button onclick="loadDashboard()" class="text-xs text-blue-600 hover:underline font-semibold">
-                        <i class="fa-solid fa-arrows-rotate"></i> Tải lại
-                    </button>
+                    <div class="flex items-center gap-3">
+                        <button onclick="cleanDeduplicateSheet()" class="px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold flex items-center gap-1.5 transition border border-blue-200" title="Xóa các dòng trùng lặp và dồn lại theo thứ tự từ ngày bé đến ngày lớn">
+                            <i class="fa-solid fa-broom"></i> Lọc Trùng & Sắp Xếp Sheet
+                        </button>
+                        <button onclick="loadDashboard()" class="text-xs text-slate-500 hover:text-slate-800 font-semibold flex items-center gap-1">
+                            <i class="fa-solid fa-arrows-rotate"></i> Tải lại
+                        </button>
+                    </div>
                 </div>
 
                 <div class="overflow-x-auto">
@@ -844,6 +849,25 @@
                 }
             } catch (e) {
                 alert('Lỗi kiểm tra kết nối: ' + e);
+            }
+        }
+
+        async function cleanDeduplicateSheet() {
+            if (!confirm('Bạn có muốn tự động lọc sạch toàn bộ dòng trùng lặp và sắp xếp lại theo thứ tự từ ngày bé đến lớn không?')) return;
+            showLoading(true);
+            try {
+                const res = await fetch('/api/clean-sheet');
+                const data = await res.json();
+                if (data.success) {
+                    showToast(data.message || 'Đã lọc trùng và sắp xếp thành công!', 'success');
+                    await loadDashboard();
+                } else {
+                    showToast(data.error || 'Có lỗi khi xử lý', 'error');
+                }
+            } catch (err) {
+                showToast('Lỗi kết nối: ' + err.message, 'error');
+            } finally {
+                showLoading(false);
             }
         }
 

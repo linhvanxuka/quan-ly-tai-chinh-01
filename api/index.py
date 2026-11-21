@@ -416,13 +416,36 @@ def auto_categorize(desc):
         
     return "Chi Phí Khác (Đột xuất / Chưa liệt kê)", "Chồng (Hòa)"
 
+def normalize_date_to_ddmmyyyy(d_val):
+    if not d_val:
+        return ""
+    s = str(d_val).strip()
+    m1 = re.search(r'(\d{1,2})/(\d{1,2})/(\d{4})', s)
+    if m1:
+        return f"{int(m1.group(1)):02d}/{int(m1.group(2)):02d}/{m1.group(3)}"
+    m2 = re.search(r'(\d{4})-(\d{1,2})-(\d{1,2})', s)
+    if m2:
+        return f"{int(m2.group(3)):02d}/{int(m2.group(2)):02d}/{m2.group(1)}"
+    months = {'Jan': 1, 'Feb': 2, 'Mar': 3, 'Apr': 4, 'May': 5, 'Jun': 6, 'Jul': 7, 'Aug': 8, 'Sep': 9, 'Oct': 10, 'Nov': 11, 'Dec': 12}
+    for m_name, m_num in months.items():
+        if m_name in s:
+            m3 = re.search(r'(\w{3})\s+(\w{3})\s+(\d{1,2})\s+(\d{4})', s)
+            if m3:
+                day = int(m3.group(3))
+                year = m3.group(4)
+                return f"{day:02d}/{m_num:02d}/{year}"
+    return s
+
 def fetch_actual_expenses():
     if GSHEETS_URL:
         try:
             r = requests.get(GSHEETS_URL, timeout=8)
             if r.status_code == 200:
                 data = r.json()
-                return data.get("expenses", [])
+                raw_exp = data.get("expenses", [])
+                for e in raw_exp:
+                    e["date"] = normalize_date_to_ddmmyyyy(e.get("date", ""))
+                return raw_exp
         except Exception as e:
             print("Lỗi fetch qua Apps Script:", e)
 
@@ -436,7 +459,7 @@ def fetch_actual_expenses():
                 parts = line.split("\t")
                 if len(parts) >= 3:
                     try:
-                        date = parts[0].strip()
+                        date = normalize_date_to_ddmmyyyy(parts[0].strip())
                         desc = parts[1].strip()
                         amount_str = parts[2].strip().replace(".", "").replace(",", "")
                         amount = int(float(amount_str)) if amount_str else 0
@@ -892,18 +915,106 @@ def handle_save_batch():
         
     # Sắp xếp từ ngày bé đến lớn trước khi đồng bộ
     items.sort(key=lambda it: parse_date_key(it.get("date", "")))
+    
+    # Kiểm tra chống trùng lặp tại backend:
+    existing_expenses = fetch_actual_expenses()
+    existing_keys = set()
+    for ex in existing_expenses:
+        d = normalize_date_to_ddmmyyyy(ex.get("date", ""))
+        try:
+            a = int(float(ex.get("amount", 0)))
+        except:
+            a = 0
+        existing_keys.add((d, a))
+
     rows = []
+    skipped_count = 0
     for it in items:
-        date = it.get("date")
+        date = normalize_date_to_ddmmyyyy(it.get("date"))
         desc = it.get("desc", "").replace(",", " ")
         amt_k = it.get("amount")
         cat = it.get("category")
         owner = it.get("owner")
         group = it.get("group")
         status = "Hợp lệ" if cat != "Chi Phí Khác (Đột xuất / Chưa liệt kê)" else "Chi phí đột xuất"
+        
+        # Nếu giao dịch này đã có trên Sheet -> bỏ qua để không trùng lặp
+        if (date, amt_k) in existing_keys:
+            skipped_count += 1
+            continue
+
         rows.append([date, desc, amt_k, cat, owner, group, "Sao kê VIB", status])
+        existing_keys.add((date, amt_k))
+        
+    if not rows:
+        return jsonify({
+            "success": True,
+            "count": 0,
+            "message": f"Các giao dịch được chọn đã có trên Google Sheet ({skipped_count} dòng trùng lặp đã được tự động loại bỏ)."
+        })
+
     success, msg = append_to_sheet(rows)
-    return jsonify({"success": success, "count": len(rows), "message": msg})
+    return jsonify({
+        "success": success,
+        "count": len(rows),
+        "message": f"Đã đồng bộ {len(rows)} giao dịch mới ({skipped_count} dòng trùng đã được loại bỏ)." if skipped_count > 0 else msg
+    })
+
+def handle_clean_sheet():
+    expenses = fetch_actual_expenses()
+    if not expenses:
+        return jsonify({"success": True, "count": 0, "message": "Sheet chưa có dữ liệu."})
+        
+    unique_map = {}
+    for e in expenses:
+        d = normalize_date_to_ddmmyyyy(e.get("date", ""))
+        try:
+            amt = int(float(e.get("amount", 0)))
+        except:
+            amt = 0
+        k = (d, amt)
+        if k not in unique_map:
+            unique_map[k] = e
+        else:
+            old_e = unique_map[k]
+            if "Chi Phí Khác" in old_e.get("category", "") and "Chi Phí Khác" not in e.get("category", ""):
+                unique_map[k] = e
+            elif len(str(e.get("desc", ""))) > len(str(old_e.get("desc", ""))):
+                unique_map[k] = e
+                
+    sorted_unique = sorted(unique_map.values(), key=lambda x: parse_date_key(x.get("date", "")))
+    
+    try:
+        cmd_clear = ["gsheets", "mutate", "clear", SPREADSHEET_ID, f"'{ACTUAL_SHEET}'!A2:H300"]
+        subprocess.run(cmd_clear, capture_output=True)
+        
+        for idx, u in enumerate(sorted_unique, start=2):
+            row_vals = [
+                normalize_date_to_ddmmyyyy(u.get("date", "")),
+                str(u.get("desc", "")).replace(",", " "),
+                str(u.get("amount", 0)),
+                str(u.get("category", "")),
+                str(u.get("owner", "")),
+                str(u.get("group", "")),
+                str(u.get("source", "Sao kê VIB")),
+                str(u.get("status", "Hợp lệ"))
+            ]
+            for c_idx, val in enumerate(row_vals):
+                col_letter = chr(ord('A') + c_idx)
+                cell = f"'{ACTUAL_SHEET}'!{col_letter}{idx}"
+                cmd_w = ["gsheets", "mutate", "write", SPREADSHEET_ID, cell, str(val).replace(",", r"\,")]
+                subprocess.run(cmd_w, capture_output=True)
+                
+        cmd_c1 = ["gsheets", "mutate", "write", SPREADSHEET_ID, f"'{ACTUAL_SHEET}'!C1", '="Số Tiền (Tổng: " & SUM(C2:C) & "k)"']
+        subprocess.run(cmd_c1, capture_output=True)
+        
+        return jsonify({
+            "success": True,
+            "count": len(sorted_unique),
+            "message": f"Đã lọc trùng và sắp xếp xong {len(sorted_unique)} giao dịch từ ngày bé đến lớn!"
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 def handle_test_gsheets():
     global GSHEETS_URL
@@ -943,6 +1054,7 @@ def catch_all(path):
     is_parse = (endpoint == "parse-bank" or p in ["api/parse-bank", "parse-bank"] or p.endswith("/parse-bank"))
     is_save = (endpoint == "save-batch" or p in ["api/save-batch", "save-batch"] or p.endswith("/save-batch"))
     is_test = (endpoint == "test-gsheets" or p in ["api/test-gsheets", "test-gsheets"] or p.endswith("/test-gsheets"))
+    is_clean = (endpoint == "clean-sheet" or p in ["api/clean-sheet", "clean-sheet"] or p.endswith("/clean-sheet"))
 
     if request.method == "POST":
         if is_add_manual:
@@ -955,12 +1067,16 @@ def catch_all(path):
             return handle_save_batch()
         elif is_test:
             return handle_test_gsheets()
+        elif is_clean:
+            return handle_clean_sheet()
 
     if request.method == "GET":
         if is_summary:
             return get_summary_data()
         elif is_test:
             return handle_test_gsheets()
+        elif is_clean:
+            return handle_clean_sheet()
     
     if request.method == "POST":
         if p in ["api/add-manual", "add-manual"]:
