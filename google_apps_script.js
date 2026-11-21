@@ -14,24 +14,63 @@
  */
 
 // ============================================================
+// Hàm hỗ trợ: Ghi hoặc cập nhật dữ liệu và sắp xếp ngày bé -> lớn
+// ============================================================
+function saveOrUpdateAndSort(sheet, rows) {
+  if (!rows || rows.length === 0) return 0;
+  var data = sheet.getDataRange().getValues();
+  
+  for (var r = 0; r < rows.length; r++) {
+    var newRow = rows[r]; // [date, desc, amount, category, owner, group, source, status]
+    var newDate = String(newRow[0]).trim();
+    var newAmt = Number(newRow[2]) || 0;
+    
+    // Tìm dòng trùng Ngày và Số tiền trên Sheet
+    var foundIndex = -1;
+    for (var i = 1; i < data.length; i++) {
+      var existDate = String(data[i][0]).trim();
+      var existAmt = Number(data[i][2]) || 0;
+      if (existAmt >= 10000) existAmt = Math.round(existAmt / 1000);
+      if (existDate === newDate && existAmt === newAmt) {
+        foundIndex = i + 1; // 1-based index in sheet
+        break;
+      }
+    }
+    
+    if (foundIndex > 0) {
+      // Đã có trên Sheet -> Cập nhật nội dung và danh mục mới, KHÔNG tạo dòng trùng
+      sheet.getRange(foundIndex, 1, 1, newRow.length).setValues([newRow]);
+      data[foundIndex - 1] = newRow;
+    } else {
+      // Chưa có -> Thêm dòng mới
+      sheet.appendRow(newRow);
+      data.push(newRow);
+    }
+  }
+  
+  // Tự động sắp xếp từ ngày bé đến lớn (cột A tăng dần)
+  var lastRow = sheet.getLastRow();
+  if (lastRow > 2) {
+    sheet.getRange(2, 1, lastRow - 1, 8).sort({column: 1, ascending: true});
+  }
+  
+  return rows.length;
+}
+
+// ============================================================
 // doGet: Đọc danh sách chi tiêu HOẶC ghi dữ liệu (bypass redirect)
 // ============================================================
 function doGet(e) {
-  // Nếu có action=append → ghi dữ liệu (dùng khi POST bị redirect thành GET)
+  // Nếu có action=append → ghi dữ liệu
   if (e.parameter && e.parameter.action === "append" && e.parameter.payload) {
     try {
       var ss = SpreadsheetApp.getActiveSpreadsheet();
       var sheet = ss.getSheetByName("Chi Tiêu Thực Tế");
       if (!sheet) sheet = ss.insertSheet("Chi Tiêu Thực Tế");
       var body = JSON.parse(e.parameter.payload);
-      var rows = body.rows;
-      if (rows && rows.length > 0) {
-        for (var i = 0; i < rows.length; i++) {
-          sheet.appendRow(rows[i]);
-        }
-      }
+      var count = saveOrUpdateAndSort(sheet, body.rows);
       return ContentService
-        .createTextOutput(JSON.stringify({success: true, count: rows ? rows.length : 0}))
+        .createTextOutput(JSON.stringify({success: true, count: count}))
         .setMimeType(ContentService.MimeType.JSON);
     } catch (err) {
       return ContentService
@@ -87,11 +126,9 @@ function doPost(e) {
     var body;
     var raw = (e.postData && e.postData.contents) ? e.postData.contents : "";
 
-    // Thử parse JSON trực tiếp
     try {
       body = JSON.parse(raw);
     } catch (e1) {
-      // Nếu không phải JSON, thử form field 'payload'
       try {
         var decoded = decodeURIComponent(raw.replace(/^payload=/, ""));
         body = JSON.parse(decoded);
@@ -104,14 +141,9 @@ function doPost(e) {
       }
     }
 
-    var rows = body.rows;
-    if (rows && rows.length > 0) {
-      for (var i = 0; i < rows.length; i++) {
-        sheet.appendRow(rows[i]);
-      }
-    }
+    var count = saveOrUpdateAndSort(sheet, body.rows);
     return ContentService
-      .createTextOutput(JSON.stringify({success: true, count: rows ? rows.length : 0}))
+      .createTextOutput(JSON.stringify({success: true, count: count}))
       .setMimeType(ContentService.MimeType.JSON);
   } catch (err) {
     return ContentService

@@ -696,6 +696,21 @@ def check_is_duplicate(date_str, amt_k, desc_str, existing_expenses):
             return True
     return False
 
+def parse_date_key(d_str):
+    try:
+        parts = str(d_str).strip().split('/')
+        if len(parts) == 3:
+            return datetime.date(int(parts[2]), int(parts[1]), int(parts[0]))
+    except Exception:
+        pass
+    try:
+        parts = str(d_str).strip().split('-')
+        if len(parts) == 3:
+            return datetime.date(int(parts[0]), int(parts[1]), int(parts[2]))
+    except Exception:
+        pass
+    return datetime.date.min
+
 def handle_suggest_category():
     data = request.json
     desc = data.get("desc", "")
@@ -809,6 +824,7 @@ def handle_parse_bank():
         norm_desc = re.sub(r'[^a-zA-Z0-9]', '', desc_str.lower())
         
         # Bước 1: Khớp số tiền + ngày + nội dung tương đồng
+        matched_ex = None
         for idx, ex in enumerate(existing_expenses):
             if idx in matched_existing_indices:
                 continue
@@ -821,6 +837,7 @@ def handle_parse_bank():
                 if (norm_desc and ex_desc and (norm_desc in ex_desc or ex_desc in norm_desc)) or (norm_desc[:10] == ex_desc[:10] if len(norm_desc)>=10 else False):
                     matched_existing_indices.add(idx)
                     is_dup = True
+                    matched_ex = ex
                     break
                     
         # Bước 2: Khớp số tiền + ngày (kể cả khi anh đã sửa lại toàn bộ tên nội dung trên Sheet)
@@ -835,12 +852,19 @@ def handle_parse_bank():
                 if ex_amt == amt_k and str(ex.get("date", "")).strip() == date_str:
                     matched_existing_indices.add(idx)
                     is_dup = True
+                    matched_ex = ex
                     break
         
         if is_dup:
+            # BẢO TỒN 100% NỘI DUNG VÀ HẠNG MỤC ANH ĐÃ CHỈNH SỬA TRÊN GOOGLE SHEET
+            saved_desc = (matched_ex.get("desc") if matched_ex else None) or desc_clean
+            saved_cat = (matched_ex.get("category") if matched_ex else None) or cat
+            saved_owner = (matched_ex.get("owner") if matched_ex else None) or owner
+            saved_group = (matched_ex.get("group") if matched_ex else None) or (CATEGORY_MAP.get(saved_cat, {}).get("group", ""))
+            
             parsed_items.append({
-                "date": date_str, "desc": desc_clean, "amount": amt_k,
-                "category": cat or "Đã lưu trước đó", "owner": owner or "-", "group": "",
+                "date": date_str, "desc": saved_desc, "amount": amt_k,
+                "category": saved_cat or "Đã lưu trước đó", "owner": saved_owner or "-", "group": saved_group,
                 "selected": False, "is_ignored": False, "is_duplicate": True
             })
         elif cat is None:
@@ -857,12 +881,17 @@ def handle_parse_bank():
                 "selected": True, "is_ignored": False, "is_duplicate": False
             })
             
+    # Sắp xếp từ ngày bé đến lớn (cũ nhất -> mới nhất)
+    parsed_items.sort(key=lambda it: parse_date_key(it.get("date", "")))
     return jsonify({"items": parsed_items, "total": len(parsed_items)})
 
 def handle_save_batch():
     items = request.json.get("items", [])
     if not items:
         return jsonify({"success": False, "message": "Không có giao dịch nào được chọn"}), 400
+        
+    # Sắp xếp từ ngày bé đến lớn trước khi đồng bộ
+    items.sort(key=lambda it: parse_date_key(it.get("date", "")))
     rows = []
     for it in items:
         date = it.get("date")
