@@ -17,7 +17,7 @@ app = Flask(__name__, template_folder=template_dir)
 
 SPREADSHEET_ID = os.environ.get("SPREADSHEET_ID", "1OdHwBFJ5L5JO5_Q_pk-_F_acBHUbpMsdG0fd7pyb_HA")
 ACTUAL_SHEET = "Chi Tiêu Thực Tế"
-GSHEETS_URL = os.environ.get("GSHEETS_URL", "")
+GSHEETS_URL = os.environ.get("GSHEETS_URL", "https://script.google.com/macros/s/AKfycbxiHxuHuNJr32aqUPeL2TKE5VWAFtVyQSRD7fxMOfyiqsW3JxidImsGzE2KV4XeD9AH/exec")
 
 FALLBACK_EXPENSES = []
 
