@@ -345,7 +345,7 @@
                                     <th class="px-3 py-2.5 text-center"><input type="checkbox" id="check-all" onchange="toggleCheckAll(this)"></th>
                                     <th class="px-3 py-2.5">Ngày</th>
                                     <th class="px-3 py-2.5">Nội Dung VIB</th>
-                                    <th class="px-3 py-2.5 text-right">Số Tiền (k) (k)</th>
+                                    <th class="px-3 py-2.5 text-right font-bold text-emerald-700 bg-emerald-50/70 rounded-lg">Tổng: <span id="parsed-total-amt">0</span>k</th>
                                     <th class="px-3 py-2.5">Danh Mục Tự Động</th>
                                     <th class="px-3 py-2.5">Người Quản Lý</th>
                                 </tr>
@@ -380,7 +380,7 @@
                                 <th class="px-4 py-3">Ngày</th>
                                 <th class="px-4 py-3">Hạng Mục</th>
                                 <th class="px-4 py-3">Diễn Giải</th>
-                                <th class="px-4 py-3 text-right">Số Tiền (k)</th>
+                                <th class="px-4 py-3 text-right font-bold text-blue-700 bg-blue-50/70 rounded-lg">Tổng Chi: <span id="history-total-amt">0</span>k</th>
                                 <th class="px-4 py-3">Người Chi</th>
                                 <th class="px-4 py-3">Nguồn</th>
                                 <th class="px-4 py-3 text-center">Trạng Thái</th>
@@ -746,6 +746,14 @@
             const tbody = document.getElementById('parsed-tbody');
             tbody.innerHTML = '';
 
+            const selectedTotal = items
+                .filter(it => it.selected)
+                .reduce((acc, cur) => acc + (cur.amount || 0), 0);
+            const totalBadge = document.getElementById('parsed-total-amt');
+            if (totalBadge) {
+                totalBadge.innerText = selectedTotal.toLocaleString('vi-VN');
+            }
+
             items.forEach((it, idx) => {
                 const tr = document.createElement('tr');
                 if (it.is_duplicate) {
@@ -843,6 +851,12 @@
         function renderHistoryTable(expenses) {
             const tbody = document.getElementById('history-tbody');
             tbody.innerHTML = '';
+            
+            const totalHist = (expenses || []).reduce((acc, e) => acc + (Number(e.amount) || 0), 0);
+            const histBadge = document.getElementById('history-total-amt');
+            if (histBadge) {
+                histBadge.innerText = totalHist.toLocaleString('vi-VN');
+            }
             if (!expenses || expenses.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="7" class="text-center py-6 text-slate-400">Chưa có giao dịch thực tế nào được ghi trong sheet.</td></tr>';
                 return;

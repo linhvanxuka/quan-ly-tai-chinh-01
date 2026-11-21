@@ -43,6 +43,7 @@ BUDGET_PLAN = [
     {"id": 14, "group": "3. Cố Định Hạ Tầng", "name": "Điện thoại ĐT 6336", "owner": "Chồng (Hòa)", "budget": 10},
     {"id": 15, "group": "3. Cố Định Hạ Tầng", "name": "Rửa xe, gửi xe", "owner": "Chồng (Hòa)", "budget": 100},
     {"id": 16, "group": "3. Cố Định Hạ Tầng", "name": "Bảo trì thiết bị gia đình", "owner": "Chồng (Hòa)", "budget": 200},
+    {"id": 32, "group": "3. Cố Định Hạ Tầng", "name": "Chi phí nhà 325 Kim Ngưu", "owner": "Chồng (Hòa)", "budget": 0},
     {"id": 17, "group": "4. Biến Đổi Gia Đình", "name": "Đi siêu thị hàng tuần (*4 tuần)", "owner": "Vợ (Quỳnh)", "budget": 1300},
     {"id": 18, "group": "4. Biến Đổi Gia Đình", "name": "Tiền ăn tối, đi chơi hàng tuần (*4 tuần)", "owner": "Chồng (Hòa)", "budget": 1300},
     {"id": 19, "group": "4. Biến Đổi Gia Đình", "name": "Sam chơi TiNiWorld / Vui chơi", "owner": "Vợ (Quỳnh)", "budget": 300},
@@ -176,6 +177,12 @@ VIETNAMESE_PHRASE_RULES = [
     (r'\bkhu vui choi\b', 'khu vui chơi'),
 
     # Cụm hạ tầng, điện thoại, xe cộ
+    (r'\b325 kim nguu\b', '325 Kim Ngưu'),
+    (r'\bnha kim nguu\b', 'nhà Kim Ngưu'),
+    (r'\bkim nguu\b', 'Kim Ngưu'),
+    (r'\b325 kn\b', '325 Kim Ngưu'),
+    (r'\blap camera\b', 'lắp camera'),
+    (r'\bsua nha\b', 'sửa nhà'),
     (r'\bo dien pana\b', 'ổ điện Panasonic'),
     (r'\bo dien\b', 'ổ điện'),
     (r'\bpana\b', 'Panasonic'),
@@ -342,6 +349,9 @@ def auto_categorize(desc):
     if any(k in t for k in ["co giao", "bieu co", "20/10", "20/11", "8/3"]):
         return "Quà cô giáo Sam (2,5tr/năm)", "Vợ (Quỳnh)"
     # Ưu tiên các danh mục cụ thể trước danh mục chợ chung
+    if any(k in t for k in ["325 kim nguu", "nha kim nguu", "kim nguu", "325 kn", "nha 325", "325kn", "camera 325", "camera kim nguu"]):
+        return "Chi phí nhà 325 Kim Ngưu", "Chồng (Hòa)"
+
     if any(k in t for k in ["cat toc", "barber"]):
         return "Cắt tóc (Hòa + Sam)", "Chồng (Hòa)"
         
