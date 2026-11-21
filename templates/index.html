@@ -702,15 +702,40 @@
             }
         });
 
+        function onToggleItem(idx, checked) {
+            parsedBatchItems[idx].selected = checked;
+            if (checked) {
+                parsedBatchItems[idx].is_ignored = false;
+                if (!parsedBatchItems[idx].category || parsedBatchItems[idx].category.startsWith('Bỏ qua')) {
+                    parsedBatchItems[idx].category = 'Chi Phí Khác (Đột xuất / Chưa liệt kê)';
+                    parsedBatchItems[idx].owner = 'Chồng (Hòa)';
+                    parsedBatchItems[idx].group = '8. Chi Phí Phát Sinh';
+                }
+            } else {
+                if (!parsedBatchItems[idx].category || parsedBatchItems[idx].category.startsWith('Bỏ qua')) {
+                    parsedBatchItems[idx].is_ignored = true;
+                }
+            }
+            renderParsedBatch(parsedBatchItems);
+        }
+
         function updateBatchCategory(idx, catName) {
             parsedBatchItems[idx].category = catName;
-            const found = globalCategories.find(c => c.name === catName);
-            if (found) {
-                parsedBatchItems[idx].owner = found.owner;
-                parsedBatchItems[idx].group = found.group;
-                const ownerEl = document.getElementById(`parsed-owner-${idx}`);
-                if (ownerEl) ownerEl.innerText = found.owner;
+            if (catName === 'Bỏ qua' || catName.startsWith('Bỏ qua')) {
+                parsedBatchItems[idx].is_ignored = true;
+                parsedBatchItems[idx].selected = false;
+                parsedBatchItems[idx].owner = '-';
+                parsedBatchItems[idx].group = '';
+            } else {
+                parsedBatchItems[idx].is_ignored = false;
+                parsedBatchItems[idx].selected = true;
+                const found = globalCategories.find(c => c.name === catName);
+                if (found) {
+                    parsedBatchItems[idx].owner = found.owner;
+                    parsedBatchItems[idx].group = found.group;
+                }
             }
+            renderParsedBatch(parsedBatchItems);
         }
 
         function renderParsedBatch(items) {
@@ -721,8 +746,8 @@
                 const tr = document.createElement('tr');
                 if (it.is_duplicate) {
                     tr.className = 'bg-slate-100/70 text-slate-400 opacity-60';
-                } else if (it.is_ignored) {
-                    tr.className = 'bg-slate-100/60 opacity-60 text-slate-400';
+                } else if (!it.selected || it.is_ignored) {
+                    tr.className = 'bg-slate-100/50 opacity-60 text-slate-500';
                 } else if (it.category === 'Chi Phí Khác (Đột xuất / Chưa liệt kê)') {
                     tr.className = 'bg-amber-50/50 hover:bg-amber-100/50';
                 } else {
@@ -733,22 +758,23 @@
                     ? `<span class="inline-block px-1.5 py-0.5 rounded text-[10px] bg-slate-200 text-slate-600 font-medium ml-1">Đã có trên Sheet</span>`
                     : '';
 
-                let catSelect = `<span class="px-2 py-0.5 rounded-md font-semibold text-[11px] bg-slate-100 text-slate-500">${it.category}</span>`;
-                if (!it.is_duplicate && !it.is_ignored && globalCategories && globalCategories.length) {
-                    const opts = globalCategories.map(c => `<option value="${c.name}" ${c.name === it.category ? 'selected' : ''}>${c.name}</option>`).join('');
-                    catSelect = `<select class="text-xs px-2 py-1 rounded bg-white border border-slate-200 focus:ring-1 focus:ring-blue-500 font-medium ${it.category.includes('Khác') ? 'text-amber-800 bg-amber-50' : 'text-slate-800'}" onchange="updateBatchCategory(${idx}, this.value)">${opts}</select>`;
+                let opts = `<option value="Bỏ qua" ${(!it.category || it.category.startsWith('Bỏ qua')) ? 'selected' : ''}>-- Bỏ qua (Trả nợ / Thu nhập) --</option>`;
+                if (globalCategories && globalCategories.length) {
+                    opts += globalCategories.map(c => `<option value="${c.name}" ${c.name === it.category ? 'selected' : ''}>${c.name} (${c.owner})</option>`).join('');
                 }
+                const catSelect = `<select class="w-full text-xs px-2 py-1 rounded bg-white border border-slate-200 focus:ring-1 focus:ring-blue-500 font-medium ${it.category.includes('Khác') ? 'text-amber-800 bg-amber-50' : 'text-slate-800'}" onchange="updateBatchCategory(${idx}, this.value)">${opts}</select>`;
 
                 tr.innerHTML = `
                     <td class="px-3 py-2 text-center">
-                        <input type="checkbox" ${it.selected ? 'checked' : ''} ${it.is_duplicate ? 'title="Giao dịch này đã có trên Sheet, mặc định bỏ chọn"' : ''} onchange="parsedBatchItems[${idx}].selected = this.checked">
+                        <input type="checkbox" ${it.selected ? 'checked' : ''} ${it.is_duplicate ? 'title="Giao dịch này đã có trên Sheet, mặc định bỏ chọn"' : ''} onchange="onToggleItem(${idx}, this.checked)">
                     </td>
                     <td class="px-3 py-2 font-medium">${it.date}</td>
                     <td class="px-3 py-2 min-w-[200px]">
-                        ${it.is_duplicate || it.is_ignored ? `<span class="text-xs text-slate-500">${it.desc} ${dupBadge}</span>` : `<input type="text" value="${it.desc.replace(/"/g, '&quot;')}" class="w-full text-xs px-2 py-1 bg-white border border-slate-200 rounded focus:border-blue-500 focus:ring-1 focus:ring-blue-500 text-slate-800" onchange="parsedBatchItems[${idx}].desc = this.value" title="Bấm để sửa lại tên nội dung">`}
+                        <input type="text" value="${it.desc.replace(/"/g, '&quot;')}" class="w-full text-xs px-2 py-1 bg-white border border-slate-200 rounded focus:border-blue-500 focus:ring-1 focus:ring-blue-500 text-slate-800" oninput="parsedBatchItems[${idx}].desc = this.value" title="Bấm để sửa lại tên nội dung">
+                        ${dupBadge}
                     </td>
                     <td class="px-3 py-2 text-right font-bold ${it.amount < 0 ? 'text-emerald-600' : 'text-slate-900'}">${it.amount.toLocaleString('vi-VN')}k</td>
-                    <td class="px-3 py-2">
+                    <td class="px-3 py-2 min-w-[220px]">
                         ${catSelect}
                     </td>
                     <td class="px-3 py-2 text-slate-500 text-xs" id="parsed-owner-${idx}">${it.owner || '-'}</td>
