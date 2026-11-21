@@ -67,8 +67,17 @@ def auto_categorize(desc):
     
     if any(k in t for k in ["lãi vib", "gốc vib", "thấu chi", "bà lan", "trả nợ", "chuyển khoản trả nợ"]):
         return None, "Bỏ qua (Trả nợ Bank/Bà Lan - có tài khoản riêng)"
-    if any(k in t for k in ["hoàn tiền", "lãi tiền gửi", "tặng tiền mặt", "tiền lương", "thu hồi nợ"]):
-        return None, "Bỏ qua (Khoản thu nhập/Hoàn tiền)"
+    # Nhận diện khoản hoàn tiền mua sắm (Shopee, TikTok, hoàn hàng)
+    is_refund = any(k in t for k in ["hoàn tiền", "refund", "hoàn hàng", "hoàn trả", "trả hàng", "hoan tien"])
+    if is_refund:
+        if any(k in t for k in ["shopee", "zalo", "tiktok", "lazada", "tiki"]):
+            if any(k in t for k in ["hòa", "quạt", "hdd", "máy", "cơ khí", "khoan"]):
+                return "Hòa: Thiết bị, máy móc, đồ cơ khí", "Chồng (Hòa)"
+            return "Quần áo, giày dép Quỳnh (TMĐT)", "Vợ (Quỳnh)"
+        return "Chi Phí Khác (Đột xuất / Chưa liệt kê)", "Chồng (Hòa)"
+
+    if any(k in t for k in ["lãi tiền gửi", "tặng tiền mặt", "tiền lương", "thu hồi nợ"]):
+        return None, "Bỏ qua (Khoản thu nhập/Lương thưởng)"
         
     if any(k in t for k in ["học sam", "trường sam", "mầm non sam", "tiểu học sam"]):
         return "Học Sam (chính khóa)", "Vợ (Quỳnh)"
@@ -345,10 +354,14 @@ def handle_add_manual():
     desc = data.get("desc", "").strip()
     raw_amount = float(data.get("amount", 0))
     
-    if raw_amount >= 1000:
-        amount_k = int(raw_amount / 1000)
+    is_neg = (raw_amount < 0) or any(k in desc.lower() for k in ["hoàn tiền", "refund", "hoàn hàng", "hoàn trả", "hoan tien"])
+    abs_amt = abs(raw_amount)
+    if abs_amt >= 1000:
+        amount_k = int(abs_amt / 1000)
     else:
-        amount_k = int(raw_amount)
+        amount_k = int(abs_amt)
+    if is_neg:
+        amount_k = -amount_k
         
     cat = data.get("category")
     if not cat:
@@ -422,6 +435,9 @@ def handle_parse_bank():
                 amt_k = int(amt / 1000)
             else:
                 amt_k = int(amt)
+            is_ref = any(k in desc_str.lower() for k in ["hoàn tiền", "refund", "hoàn hàng", "hoàn trả", "hoan tien"])
+            if is_ref and amt_k > 0:
+                amt_k = -amt_k
             cat, owner = auto_categorize(desc_str)
             if cat is None:
                 parsed_items.append({
