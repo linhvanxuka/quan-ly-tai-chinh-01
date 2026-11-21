@@ -378,6 +378,27 @@ def handle_add_manual():
     success, msg = append_to_sheet([row])
     return jsonify({"success": success, "message": f"Đã lưu thành công: {amount_k:,}k ({desc})"})
 
+def check_is_duplicate(date_str, amt_k, desc_str, existing_expenses):
+    norm_desc = re.sub(r'[^a-zA-Z0-9]', '', desc_str.lower())
+    for ex in existing_expenses:
+        try:
+            ex_amt = int(float(ex.get("amount", 0)))
+        except:
+            ex_amt = 0
+        if amt_k != ex_amt:
+            continue
+        ex_desc = re.sub(r'[^a-zA-Z0-9]', '', str(ex.get("desc", "")).lower())
+        ex_date = str(ex.get("date", "")).strip()
+        
+        # Nếu trùng số tiền và nội dung trùng nhau hoặc chứa nhau
+        if norm_desc and ex_desc:
+            if norm_desc in ex_desc or ex_desc in norm_desc or (len(norm_desc) >= 8 and norm_desc[:12] == ex_desc[:12]):
+                return True
+        # Hoặc trùng cả ngày và số tiền
+        if date_str == ex_date and amt_k == ex_amt:
+            return True
+    return False
+
 def handle_suggest_category():
     data = request.json
     desc = data.get("desc", "")
@@ -391,6 +412,10 @@ def handle_parse_bank():
     filename = file.filename.lower()
     parsed_items = []
     
+    # Lấy dữ liệu chi tiêu đã có trên Google Sheets để tự động phát hiện và chống trùng lặp
+    existing_expenses = fetch_actual_expenses()
+    
+    raw_rows = []
     if filename.endswith(".xlsx") or filename.endswith(".xls"):
         wb = openpyxl.load_workbook(file, data_only=True)
         sheet = wb.active
@@ -431,27 +456,78 @@ def handle_parse_bank():
                     amt = float(amt_clean)
             except:
                 continue
-            if amt >= 10000:
-                amt_k = int(amt / 1000)
-            else:
-                amt_k = int(amt)
-            is_ref = any(k in desc_str.lower() for k in ["hoàn tiền", "refund", "hoàn hàng", "hoàn trả", "hoan tien"])
-            if is_ref and amt_k > 0:
-                amt_k = -amt_k
-            cat, owner = auto_categorize(desc_str)
-            if cat is None:
-                parsed_items.append({
-                    "date": date_str, "desc": desc_str, "amount": amt_k,
-                    "category": owner, "owner": "", "group": "",
-                    "selected": False, "is_ignored": True
-                })
-            else:
-                group = CATEGORY_MAP.get(cat, {}).get("group", "8. Chi Phí Phát Sinh")
-                parsed_items.append({
-                    "date": date_str, "desc": desc_str, "amount": amt_k,
-                    "category": cat, "owner": owner, "group": group,
-                    "selected": True, "is_ignored": False
-                })
+            raw_rows.append((date_str, desc_str, amt))
+            
+    elif filename.endswith(".csv"):
+        import csv
+        import io
+        content = file.read().decode("utf-8", errors="ignore")
+        reader = csv.reader(io.StringIO(content))
+        csv_rows = list(reader)
+        header_row = 0
+        date_col = 0
+        desc_col = 1
+        amt_col = 2
+        for r_idx, r in enumerate(csv_rows[:15]):
+            low = [str(c).lower() for c in r]
+            for c_idx, val in enumerate(low):
+                if "ngày" in val:
+                    date_col = c_idx
+                if "nội dung" in val or "diễn giải" in val:
+                    desc_col = c_idx
+                if "số tiền" in val or "tiền ghi nợ" in val:
+                    amt_col = c_idx
+            if any("ngày" in v for v in low) and any("nội dung" in v for v in low):
+                header_row = r_idx
+                break
+        for r in csv_rows[header_row + 1:]:
+            if len(r) <= max(date_col, desc_col, amt_col):
+                continue
+            date_str = r[date_col].strip()
+            desc_str = r[desc_col].strip()
+            amt_val = r[amt_col].strip()
+            if not date_str or not desc_str or not amt_val:
+                continue
+            try:
+                amt = float(amt_val.replace(".", "").replace(",", "").strip())
+            except:
+                continue
+            raw_rows.append((date_str, desc_str, amt))
+
+    for date_str, desc_str, amt in raw_rows:
+        if amt >= 10000:
+            amt_k = int(amt / 1000)
+        else:
+            amt_k = int(amt)
+        is_ref = any(k in desc_str.lower() for k in ["hoàn tiền", "refund", "hoàn hàng", "hoàn trả", "hoan tien"])
+        if is_ref and amt_k > 0:
+            amt_k = -amt_k
+            
+        cat, owner = auto_categorize(desc_str)
+        
+        # Kiểm tra trùng lặp với dữ liệu đã lưu
+        is_dup = check_is_duplicate(date_str, amt_k, desc_str, existing_expenses)
+        
+        if is_dup:
+            parsed_items.append({
+                "date": date_str, "desc": desc_str, "amount": amt_k,
+                "category": cat or "Đã lưu trước đó", "owner": owner or "-", "group": "",
+                "selected": False, "is_ignored": False, "is_duplicate": True
+            })
+        elif cat is None:
+            parsed_items.append({
+                "date": date_str, "desc": desc_str, "amount": amt_k,
+                "category": owner, "owner": "", "group": "",
+                "selected": False, "is_ignored": True, "is_duplicate": False
+            })
+        else:
+            group = CATEGORY_MAP.get(cat, {}).get("group", "8. Chi Phí Phát Sinh")
+            parsed_items.append({
+                "date": date_str, "desc": desc_str, "amount": amt_k,
+                "category": cat, "owner": owner, "group": group,
+                "selected": True, "is_ignored": False, "is_duplicate": False
+            })
+            
     return jsonify({"items": parsed_items, "total": len(parsed_items)})
 
 def handle_save_batch():

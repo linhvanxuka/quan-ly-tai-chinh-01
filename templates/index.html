@@ -671,7 +671,9 @@
 
             items.forEach((it, idx) => {
                 const tr = document.createElement('tr');
-                if (it.is_ignored) {
+                if (it.is_duplicate) {
+                    tr.className = 'bg-slate-100/70 text-slate-400 opacity-60';
+                } else if (it.is_ignored) {
                     tr.className = 'bg-slate-100/60 opacity-60 text-slate-400';
                 } else if (it.category === 'Chi Phí Khác (Đột xuất / Chưa liệt kê)') {
                     tr.className = 'bg-amber-50/50 hover:bg-amber-100/50';
@@ -679,15 +681,19 @@
                     tr.className = 'hover:bg-slate-50';
                 }
 
+                const dupBadge = it.is_duplicate 
+                    ? `<span class="inline-block px-1.5 py-0.5 rounded text-[10px] bg-slate-200 text-slate-600 font-medium ml-1">Đã có trên Sheet</span>`
+                    : '';
+
                 tr.innerHTML = `
                     <td class="px-3 py-2 text-center">
-                        <input type="checkbox" ${it.selected ? 'checked' : ''} onchange="parsedBatchItems[${idx}].selected = this.checked">
+                        <input type="checkbox" ${it.selected ? 'checked' : ''} ${it.is_duplicate ? 'title="Giao dịch này đã có trên Sheet, mặc định bỏ chọn"' : ''} onchange="parsedBatchItems[${idx}].selected = this.checked">
                     </td>
                     <td class="px-3 py-2 font-medium">${it.date}</td>
-                    <td class="px-3 py-2 max-w-[250px] truncate" title="${it.desc}">${it.desc}</td>
-                    <td class="px-3 py-2 text-right font-bold text-slate-900">${it.amount.toLocaleString('vi-VN')}k</td>
+                    <td class="px-3 py-2 max-w-[250px] truncate" title="${it.desc}">${it.desc} ${dupBadge}</td>
+                    <td class="px-3 py-2 text-right font-bold ${it.amount < 0 ? 'text-emerald-600' : 'text-slate-900'}">${it.amount.toLocaleString('vi-VN')}k</td>
                     <td class="px-3 py-2">
-                        <span class="px-2 py-0.5 rounded-md font-semibold text-[11px] ${it.category.includes('Khác') ? 'bg-amber-100 text-amber-800' : 'bg-blue-50 text-blue-700'}">
+                        <span class="px-2 py-0.5 rounded-md font-semibold text-[11px] ${it.category.includes('Khác') ? 'bg-amber-100 text-amber-800' : (it.is_duplicate ? 'bg-slate-100 text-slate-500' : 'bg-blue-50 text-blue-700')}">
                             ${it.category}
                         </span>
                     </td>
@@ -699,7 +705,7 @@
 
         function toggleCheckAll(master) {
             parsedBatchItems.forEach(it => {
-                if (!it.is_ignored) {
+                if (!it.is_ignored && !it.is_duplicate) {
                     it.selected = master.checked;
                 }
             });
