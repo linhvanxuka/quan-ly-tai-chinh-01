@@ -37,6 +37,10 @@
             
             <!-- Quick Actions & Links -->
             <div class="flex items-center gap-2">
+                <button onclick="checkGSheetsConnection()" title="Kiểm tra kết nối tới Google Sheets"
+                   class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-700/80 hover:bg-blue-600 text-xs font-semibold text-white transition shadow-sm">
+                    <i class="fa-solid fa-link"></i> Kiểm Tra Kết Nối
+                </button>
                 <a href="https://docs.google.com/spreadsheets/d/1OdHwBFJ5L5JO5_Q_pk-_F_acBHUbpMsdG0fd7pyb_HA/edit" target="_blank" 
                    class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-semibold text-white transition shadow-sm">
                     <i class="fa-solid fa-file-excel"></i> Mở Google Sheets
@@ -814,10 +818,24 @@
                     alert(`🎉 Đã đồng bộ thành công ${data.count} giao dịch vào Google Sheets!`);
                     switchTab('dashboard');
                 } else {
-                    alert('Lỗi: ' + data.error);
+                    alert('❌ Không thể lưu vào Google Sheets:\n\n' + (data.message || data.error || 'Lỗi không xác định'));
                 }
             } catch (err) {
-                alert('Lỗi: ' + err);
+                alert('❌ Lỗi kết nối máy chủ: ' + err);
+            }
+        }
+
+        async function checkGSheetsConnection() {
+            try {
+                const res = await fetch('/api/test-gsheets');
+                const data = await res.json();
+                if (data.success) {
+                    alert('✅ Kết nối Google Sheets thành công 100%!\n\nTrang tính đã sẵn sàng nhận dữ liệu đồng bộ.');
+                } else {
+                    alert('⚠️ LỖI KẾT NỐI GOOGLE SHEETS:\n\n' + (data.error || data.message || 'Mã lỗi 404') + '\n\n👉 Hướng dẫn khắc phục trong 1 phút:\n1. Mở trang Google Sheet của anh\n2. Bấm Tiện ích mở rộng > Apps Script\n3. Bấm Triển khai > Quản lý bản triển khai (hoặc Triển khai mới)\n4. Bắt buộc chọn mục: "Ai có quyền truy cập: Bất kỳ ai (Anyone)"\n5. Bấm Triển khai và copy lại URL dán vào Vercel.');
+                }
+            } catch (e) {
+                alert('Lỗi kiểm tra kết nối: ' + e);
             }
         }
 

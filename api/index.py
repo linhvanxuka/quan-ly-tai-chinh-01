@@ -201,13 +201,17 @@ def fetch_actual_expenses():
     return FALLBACK_EXPENSES
 
 def append_to_sheet(rows):
-    if GSHEETS_URL:
+    global GSHEETS_URL
+    url_to_use = GSHEETS_URL
+    if url_to_use:
         try:
-            r = requests.post(GSHEETS_URL, json={"rows": rows}, timeout=10)
-            if r.status_code == 200:
+            r = requests.post(url_to_use, json={"rows": rows}, timeout=15, allow_redirects=True)
+            if r.status_code in [200, 302]:
                 return True, "Thành công"
+            else:
+                return False, f"Google Apps Script trả về lỗi HTTP {r.status_code}. Vui lòng kiểm tra quyền 'Bất kỳ ai (Anyone)' trên bản Triển khai Google Sheet."
         except Exception as e:
-            print("Lỗi POST qua Apps Script:", e)
+            return False, f"Lỗi kết nối tới Google Apps Script: {str(e)}"
             
     try:
         batch_val = "|".join([",".join([str(x).replace(",", " ") for x in row]) for row in rows])
@@ -223,7 +227,7 @@ def append_to_sheet(rows):
             "date": r[0], "group": r[1], "category": r[2], "amount": r[3],
             "owner": r[4], "desc": r[5], "source": r[6], "status": r[7]
         })
-    return True, "Đã lưu tạm thời"
+    return False, "Chưa kết nối được Google Sheet: Vui lòng kiểm tra lại Web App URL"
 
 def get_html():
     for p in [
@@ -583,7 +587,26 @@ def handle_save_batch():
         status = "Hợp lệ" if cat != "Chi Phí Khác (Đột xuất / Chưa liệt kê)" else "Chi phí đột xuất"
         rows.append([date, group, cat, amt_k, owner, desc, "Sao kê VIB", status])
     success, msg = append_to_sheet(rows)
-    return jsonify({"success": success, "count": len(rows)})
+    return jsonify({"success": success, "count": len(rows), "message": msg})
+
+def handle_test_gsheets():
+    global GSHEETS_URL
+    url = request.args.get("url") or (request.json.get("url") if request.is_json else None) or GSHEETS_URL
+    if not url:
+        return jsonify({"success": False, "error": "Chưa cấu hình URL Google Apps Script"}), 400
+    try:
+        r = requests.get(url, timeout=10, allow_redirects=True)
+        if r.status_code == 200:
+            return jsonify({"success": True, "status": 200, "message": "Kết nối Google Apps Script thành công!"})
+        elif r.status_code == 404:
+            return jsonify({
+                "success": False, "status": 404,
+                "error": "Google báo lỗi 404 (Không tìm thấy trang). Bắt buộc phải chọn: 'Ai có quyền truy cập: Bất kỳ ai (Anyone)' trên bản Triển khai Apps Script."
+            })
+        else:
+            return jsonify({"success": False, "status": r.status_code, "error": f"Lỗi HTTP {r.status_code} từ Google."})
+    except Exception as e:
+        return jsonify({"success": False, "error": f"Không thể kết nối: {str(e)}"})
 
 # VERCEL FOOLPROOF CATCH-ALL ROUTER
 @app.route("/", defaults={"path": ""}, methods=["GET", "POST"])
@@ -600,6 +623,7 @@ def catch_all(path):
     is_suggest = (endpoint == "suggest-category" or p in ["api/suggest-category", "suggest-category"] or p.endswith("/suggest-category"))
     is_parse = (endpoint == "parse-bank" or p in ["api/parse-bank", "parse-bank"] or p.endswith("/parse-bank"))
     is_save = (endpoint == "save-batch" or p in ["api/save-batch", "save-batch"] or p.endswith("/save-batch"))
+    is_test = (endpoint == "test-gsheets" or p in ["api/test-gsheets", "test-gsheets"] or p.endswith("/test-gsheets"))
 
     if request.method == "POST":
         if is_add_manual:
@@ -610,10 +634,14 @@ def catch_all(path):
             return handle_parse_bank()
         elif is_save:
             return handle_save_batch()
+        elif is_test:
+            return handle_test_gsheets()
 
     if request.method == "GET":
         if is_summary:
             return get_summary_data()
+        elif is_test:
+            return handle_test_gsheets()
     
     if request.method == "POST":
         if p in ["api/add-manual", "add-manual"]:
@@ -624,10 +652,14 @@ def catch_all(path):
             return handle_parse_bank()
         elif p in ["api/save-batch", "save-batch"]:
             return handle_save_batch()
+        elif p in ["api/test-gsheets", "test-gsheets"]:
+            return handle_test_gsheets()
 
     if request.method == "GET":
         if p in ["api/summary", "summary"]:
             return get_summary_data()
+        elif p in ["api/test-gsheets", "test-gsheets"]:
+            return handle_test_gsheets()
 
     # Mặc định trả về toàn bộ HTML ứng dụng (Không bao giờ bị 404!)
     return get_html(), 200, {"Content-Type": "text/html; charset=utf-8"}
