@@ -206,10 +206,11 @@ def append_to_sheet(rows):
     if url_to_use:
         try:
             r = requests.post(url_to_use, json={"rows": rows}, timeout=15, allow_redirects=True)
-            if r.status_code in [200, 302]:
+            is_html = "text/html" in r.headers.get("Content-Type", "").lower() or "<!doctype" in r.text.lower()
+            if r.status_code in [200, 302] and not is_html:
                 return True, "Thành công"
             else:
-                return False, f"Google Apps Script trả về lỗi HTTP {r.status_code}. Vui lòng kiểm tra quyền 'Bất kỳ ai (Anyone)' trên bản Triển khai Google Sheet."
+                return False, f"Google Apps Script trả về lỗi (HTTP {r.status_code}). Nguyên nhân: Quyền truy cập chưa chọn 'Bất kỳ ai (Anyone)' hoặc URL Web App chưa đúng."
         except Exception as e:
             return False, f"Lỗi kết nối tới Google Apps Script: {str(e)}"
             
@@ -592,21 +593,24 @@ def handle_save_batch():
 def handle_test_gsheets():
     global GSHEETS_URL
     url = request.args.get("url") or (request.json.get("url") if request.is_json else None) or GSHEETS_URL
+    masked_url = (url[:35] + "..." + url[-15:]) if url and len(url) > 50 else (url or "")
     if not url:
-        return jsonify({"success": False, "error": "Chưa cấu hình URL Google Apps Script"}), 400
+        return jsonify({"success": False, "error": "Chưa cấu hình URL Google Apps Script", "url": ""}), 400
     try:
         r = requests.get(url, timeout=10, allow_redirects=True)
-        if r.status_code == 200:
-            return jsonify({"success": True, "status": 200, "message": "Kết nối Google Apps Script thành công!"})
-        elif r.status_code == 404:
+        # Kiểm tra nội dung trả về có phải là JSON của Apps Script không
+        is_html = "text/html" in r.headers.get("Content-Type", "").lower() or "<!doctype" in r.text.lower()
+        if r.status_code == 200 and not is_html:
+            return jsonify({"success": True, "status": 200, "message": "Kết nối Google Apps Script thành công!", "url": masked_url})
+        elif r.status_code == 404 or is_html:
             return jsonify({
-                "success": False, "status": 404,
-                "error": "Google báo lỗi 404 (Không tìm thấy trang). Bắt buộc phải chọn: 'Ai có quyền truy cập: Bất kỳ ai (Anyone)' trên bản Triển khai Apps Script."
+                "success": False, "status": 404, "url": masked_url,
+                "error": "Google báo lỗi Không tìm thấy trang (404). Nguyên nhân: Quyền truy cập chưa chọn 'Bất kỳ ai (Anyone)' hoặc URL Web App chưa đúng."
             })
         else:
-            return jsonify({"success": False, "status": r.status_code, "error": f"Lỗi HTTP {r.status_code} từ Google."})
+            return jsonify({"success": False, "status": r.status_code, "url": masked_url, "error": f"Lỗi HTTP {r.status_code} từ Google."})
     except Exception as e:
-        return jsonify({"success": False, "error": f"Không thể kết nối: {str(e)}"})
+        return jsonify({"success": False, "url": masked_url, "error": f"Không thể kết nối: {str(e)}"})
 
 # VERCEL FOOLPROOF CATCH-ALL ROUTER
 @app.route("/", defaults={"path": ""}, methods=["GET", "POST"])
