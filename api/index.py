@@ -173,22 +173,22 @@ def fetch_actual_expenses():
             lines = res.stdout.strip().split("\n")
             for line in lines:
                 parts = line.split("\t")
-                if len(parts) >= 4:
+                if len(parts) >= 3:
                     try:
                         date = parts[0].strip()
-                        group = parts[1].strip()
-                        cat = parts[2].strip()
-                        amount_str = parts[3].strip().replace(".", "").replace(",", "")
+                        desc = parts[1].strip()
+                        amount_str = parts[2].strip().replace(".", "").replace(",", "")
                         amount = int(float(amount_str)) if amount_str else 0
                         if amount >= 10000:
                             amount = int(amount / 1000)
+                        cat = parts[3].strip() if len(parts) > 3 else ""
                         owner = parts[4].strip() if len(parts) > 4 else ""
-                        desc = parts[5].strip() if len(parts) > 5 else ""
+                        group = parts[5].strip() if len(parts) > 5 else ""
                         source = parts[6].strip() if len(parts) > 6 else ""
                         status = parts[7].strip() if len(parts) > 7 else ""
                         expenses.append({
-                            "date": date, "group": group, "category": cat,
-                            "amount": amount, "owner": owner, "desc": desc,
+                            "date": date, "desc": desc, "amount": amount,
+                            "category": cat, "owner": owner, "group": group,
                             "source": source, "status": status
                         })
                     except Exception as e:
@@ -385,7 +385,7 @@ def handle_add_manual():
     if cat == "Chi Phí Khác (Đột xuất / Chưa liệt kê)":
         status = "Chi phí đột xuất"
         
-    row = [date, group, cat, amount_k, owner, desc, "Nhập tay", status]
+    row = [date, desc, amount_k, cat, owner, group, "Nhập tay", status]
     success, msg = append_to_sheet([row])
     return jsonify({"success": success, "message": f"Đã lưu thành công: {amount_k:,}k ({desc})"})
 
@@ -579,13 +579,13 @@ def handle_save_batch():
     rows = []
     for it in items:
         date = it.get("date")
-        group = it.get("group")
-        cat = it.get("category")
-        amt_k = it.get("amount")
-        owner = it.get("owner")
         desc = it.get("desc", "").replace(",", " ")
+        amt_k = it.get("amount")
+        cat = it.get("category")
+        owner = it.get("owner")
+        group = it.get("group")
         status = "Hợp lệ" if cat != "Chi Phí Khác (Đột xuất / Chưa liệt kê)" else "Chi phí đột xuất"
-        rows.append([date, group, cat, amt_k, owner, desc, "Sao kê VIB", status])
+        rows.append([date, desc, amt_k, cat, owner, group, "Sao kê VIB", status])
     success, msg = append_to_sheet(rows)
     return jsonify({"success": success, "count": len(rows), "message": msg})
 

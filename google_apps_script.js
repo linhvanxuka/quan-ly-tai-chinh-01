@@ -26,16 +26,16 @@ function doGet(e) {
   var expenses = [];
   for (var i = 1; i < data.length; i++) {
     var row = data[i];
-    if (row[0] && row[2]) {
-      var amt = Number(row[3]) || 0;
+    if (row[0] && row[1]) {
+      var amt = Number(row[2]) || 0;
       if (amt >= 10000) amt = Math.round(amt / 1000); // Chuẩn hóa về nghìn đồng (k)
       expenses.push({
         date: String(row[0]),
-        group: String(row[1] || ""),
-        category: String(row[2] || ""),
+        desc: String(row[1] || ""),
         amount: amt,
+        category: String(row[3] || ""),
         owner: String(row[4] || ""),
-        desc: String(row[5] || ""),
+        group: String(row[5] || ""),
         source: String(row[6] || ""),
         status: String(row[7] || "")
       });
