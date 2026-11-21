@@ -209,28 +209,21 @@ def append_to_sheet(rows):
         })
     return True, "Đã lưu tạm thời"
 
-# Phục vụ file HTML giao diện chính trên cả local và Vercel
-@app.route("/")
-@app.route("/api")
-@app.route("/api/index")
-@app.route("/api/")
-def index():
+def get_html():
     for p in [
         os.path.join(public_dir, "index.html"),
         os.path.join(template_dir, "index.html"),
+        os.path.join(root_dir, "index.html"),
         "public/index.html",
         "templates/index.html"
     ]:
         if os.path.exists(p):
             with open(p, "r", encoding="utf-8") as f:
-                return f.read(), 200, {"Content-Type": "text/html; charset=utf-8"}
-    return render_template("index.html")
+                return f.read()
+    return "<h1>So Quan Ly Tai Chinh Hoa Quynh</h1>"
 
-@app.route("/api/summary", methods=["GET"])
-@app.route("/summary", methods=["GET"])
-def get_summary():
+def get_summary_data():
     expenses = fetch_actual_expenses()
-    
     cat_spent = {c["name"]: 0 for c in BUDGET_PLAN}
     for e in expenses:
         cat = e.get("category", "")
@@ -346,9 +339,7 @@ def get_summary():
         "recent_expenses": expenses[-15:][::-1]
     })
 
-@app.route("/api/add-manual", methods=["POST"])
-@app.route("/add-manual", methods=["POST"])
-def add_manual():
+def handle_add_manual():
     data = request.json
     date = data.get("date") or datetime.date.today().strftime("%d/%m/%Y")
     desc = data.get("desc", "").strip()
@@ -372,31 +363,24 @@ def add_manual():
         
     row = [date, group, cat, amount_k, owner, desc, "Nhập tay", status]
     success, msg = append_to_sheet([row])
-    
     return jsonify({"success": success, "message": f"Đã lưu thành công: {amount_k:,}k ({desc})"})
 
-@app.route("/api/suggest-category", methods=["POST"])
-@app.route("/suggest-category", methods=["POST"])
-def suggest_category():
+def handle_suggest_category():
     data = request.json
     desc = data.get("desc", "")
     cat, owner = auto_categorize(desc)
     return jsonify({"category": cat, "owner": owner})
 
-@app.route("/api/parse-bank", methods=["POST"])
-@app.route("/parse-bank", methods=["POST"])
-def parse_bank():
+def handle_parse_bank():
     if "file" not in request.files:
         return jsonify({"error": "Không tìm thấy file tải lên"}), 400
     file = request.files["file"]
     filename = file.filename.lower()
-    
     parsed_items = []
     
     if filename.endswith(".xlsx") or filename.endswith(".xls"):
         wb = openpyxl.load_workbook(file, data_only=True)
         sheet = wb.active
-        
         header_row = 1
         date_col = 1
         desc_col = 2
@@ -419,17 +403,13 @@ def parse_bank():
             date_val = sheet.cell(r, date_col).value
             desc_val = sheet.cell(r, desc_col).value
             amt_val = sheet.cell(r, amt_col).value
-            
             if not date_val or not desc_val or amt_val is None:
                 continue
-                
             if isinstance(date_val, (datetime.datetime, datetime.date)):
                 date_str = date_val.strftime("%d/%m/%Y")
             else:
                 date_str = str(date_val).strip()
-                
             desc_str = str(desc_val).strip()
-            
             try:
                 if isinstance(amt_val, (int, float)):
                     amt = float(amt_val)
@@ -438,14 +418,11 @@ def parse_bank():
                     amt = float(amt_clean)
             except:
                 continue
-                
             if amt >= 10000:
                 amt_k = int(amt / 1000)
             else:
                 amt_k = int(amt)
-                
             cat, owner = auto_categorize(desc_str)
-            
             if cat is None:
                 parsed_items.append({
                     "date": date_str, "desc": desc_str, "amount": amt_k,
@@ -461,13 +438,10 @@ def parse_bank():
                 })
     return jsonify({"items": parsed_items, "total": len(parsed_items)})
 
-@app.route("/api/save-batch", methods=["POST"])
-@app.route("/save-batch", methods=["POST"])
-def save_batch():
+def handle_save_batch():
     items = request.json.get("items", [])
     if not items:
         return jsonify({"success": False, "message": "Không có giao dịch nào được chọn"}), 400
-        
     rows = []
     for it in items:
         date = it.get("date")
@@ -478,9 +452,31 @@ def save_batch():
         desc = it.get("desc", "").replace(",", " ")
         status = "Hợp lệ" if cat != "Chi Phí Khác (Đột xuất / Chưa liệt kê)" else "Chi phí đột xuất"
         rows.append([date, group, cat, amt_k, owner, desc, "Sao kê VIB", status])
-        
     success, msg = append_to_sheet(rows)
     return jsonify({"success": success, "count": len(rows)})
+
+# VERCEL FOOLPROOF CATCH-ALL ROUTER
+@app.route("/", defaults={"path": ""}, methods=["GET", "POST"])
+@app.route("/<path:path>", methods=["GET", "POST"])
+def catch_all(path):
+    p = path.strip("/").lower()
+    
+    if request.method == "POST":
+        if p in ["api/add-manual", "add-manual"]:
+            return handle_add_manual()
+        elif p in ["api/suggest-category", "suggest-category"]:
+            return handle_suggest_category()
+        elif p in ["api/parse-bank", "parse-bank"]:
+            return handle_parse_bank()
+        elif p in ["api/save-batch", "save-batch"]:
+            return handle_save_batch()
+
+    if request.method == "GET":
+        if p in ["api/summary", "summary"]:
+            return get_summary_data()
+
+    # Mặc định trả về toàn bộ HTML ứng dụng (Không bao giờ bị 404!)
+    return get_html(), 200, {"Content-Type": "text/html; charset=utf-8"}
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5001, debug=True)
